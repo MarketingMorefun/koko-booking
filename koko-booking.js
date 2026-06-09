@@ -634,6 +634,7 @@ roomExtAvailEl.textContent="Checking availability...";roomExtAvailEl.style.color
 try{
 const r=await fetch(`${BASE_URL}/Availability`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload:{location_slug,date,guests:Number(guests)}})});
 const data=await r.json();
+console.log("[RoomExt] availability response",JSON.stringify(data).slice(0,500));
 const rooms=data.rooms||data.available_rooms||data||[];
 const room=rooms.find(rm=>(rm.party_room_id||rm.room_id||rm.id)===party_room_id);
 if(!room){roomExtAvailEl.textContent="⚠️ Room not found in availability.";roomExtAvailEl.style.color="#B86816";return;}
@@ -641,7 +642,7 @@ const extEnd=Number(end_ts)+3600000;
 const hasSlot=(room.slots||[]).some(s=>Number(s.start_ts)<=Number(end_ts)&&Number(s.end_ts)>=extEnd);
 if(hasSlot){roomExtAvailEl.textContent="✅ The extra hour is available!";roomExtAvailEl.style.color="#2E7D32";}
 else{roomExtAvailEl.textContent="❌ The extra hour is not available for this slot.";roomExtAvailEl.style.color="#C62828";}
-}catch(e){roomExtAvailEl.textContent="⚠️ Could not check availability.";roomExtAvailEl.style.color="#B86816";}
+}catch(e){console.error("[RoomExt] availability check failed",e);roomExtAvailEl.textContent="⚠️ Could not check availability.";roomExtAvailEl.style.color="#B86816";}
 }
 if(isGiftBag&&opts.length){
 wrap=el("div","",{display:"grid",gap:"10px",width:"100%"});
