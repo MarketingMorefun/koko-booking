@@ -782,7 +782,7 @@ async function checkGroupRoomExtension(roomExtEl){
       return (r.slots||[]).some(function(s){return Number(s.start_ts)<extEnd&&Number(s.end_ts)>Number(end_ts);});
     });
     if(anyFree){roomExtEl.textContent="✅ The extra hour is available!";roomExtEl.style.color="#2E7D32";}
-    else{roomExtEl.textContent="❌ Our party rooms can't accommodate your group size for an extra hour. Maximum capacity per room is 16 guests.";roomExtEl.style.color="#C62828";}
+    else{roomExtEl.textContent="❌ The extra hour is unavailable — no party room at this location can accommodate your group size.";roomExtEl.style.color="#C62828";}
   }catch(e){
     roomExtEl.textContent="⚠️ Could not check availability.";roomExtEl.style.color="#B86816";
   }
