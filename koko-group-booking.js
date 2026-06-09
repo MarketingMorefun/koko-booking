@@ -738,6 +738,8 @@ function renderGroupAddonCard(list,addon){
   let qty=0;
   let selected="";
   const opts=addonOptions(addon);
+  const isBilliards=Number(addonId)===2;
+  const billiardsMin=isBilliards?Math.max(3,Math.ceil((window.groupBookingState.guests||10)/4)):0;
   const card=el("div","");
   card.className="koko-addon-card";
   const title=el("div",addon.name || "Add-on");
@@ -792,7 +794,9 @@ function renderGroupAddonCard(list,addon){
     else window.groupBookingState.addons.push(payload);
   }
   minus.addEventListener("click",async function(){
-    if(qty>0) qty--;
+    const minQty=isBilliards&&qty>0?billiardsMin:0;
+    if(qty>minQty) qty--;
+    else if(isBilliards&&qty>0) qty=0;
     sync();
     await loadGroupQuote();
   });
@@ -800,10 +804,16 @@ function renderGroupAddonCard(list,addon){
     if(opts.length && !selected){
       return msg("Please select an option for " + (addon.name || "this add-on") + ".",true);
     }
-    qty++;
+    if(isBilliards&&qty===0) qty=billiardsMin;
+    else qty++;
     sync();
     await loadGroupQuote();
   });
+  if(isBilliards){
+    const hint=el("div","Minimum "+billiardsMin+" tables required (max 4 guests per table)");
+    hint.style.cssText="font-size:12px;color:#B86816;font-weight:700;font-family:'Maven Pro',Arial,sans-serif;";
+    card.appendChild(hint);
+  }
   row.appendChild(minus);
   row.appendChild(count);
   row.appendChild(plus);
