@@ -283,7 +283,7 @@
 }
 
 .koko-guest-stepper input#guestCount{
-  padding-right:112px !important;
+  padding-right:128px !important;
   -moz-appearance:textfield;
   position:relative;
   z-index:1;
@@ -302,19 +302,19 @@
   transform:translateY(-50%);
   display:flex;
   align-items:center;
-  gap:8px;
+  gap:6px;
   pointer-events:auto;
   z-index:5;
 }
 
 .koko-guest-stepper-btn{
-  width:36px;
-  height:36px;
-  border-radius:10px;
-  border:1px solid #E8DDCC;
+  width:46px;
+  height:46px;
+  border-radius:12px;
+  border:2px solid #E8DDCC;
   background:#fff;
   color:#2F241C;
-  font-size:18px;
+  font-size:24px;
   font-weight:800;
   line-height:1;
   cursor:pointer;
@@ -326,12 +326,20 @@
   position:relative;
   z-index:6;
   touch-action:manipulation;
+  box-shadow:0 2px 6px rgba(0,0,0,.08);
+  transition:transform .1s ease, box-shadow .1s ease;
+}
+
+.koko-guest-stepper-btn:active{
+  transform:scale(.93);
+  box-shadow:none;
 }
 
 .koko-guest-stepper-btn.is-plus{
   border-color:#F28C28;
   background:#FFF7EB;
   color:#B86816;
+  box-shadow:0 2px 6px rgba(242,140,40,.18);
 }
 
 .koko-guest-stepper-btn.is-disabled,
