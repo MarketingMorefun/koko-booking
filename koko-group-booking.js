@@ -768,10 +768,24 @@ async function loadGroupAddons(){
   }
 }
 
-function checkGroupRoomExtension(roomExtEl){
+async function checkGroupRoomExtension(roomExtEl){
   if(!roomExtEl) return;
-  roomExtEl.textContent="ℹ️ Our team will confirm the extra hour availability after booking.";
-  roomExtEl.style.color="#7B6A58";
+  const{location_slug,date,guests,end_ts}=window.groupBookingState;
+  if(!end_ts){roomExtEl.textContent="⚠️ Please select a time slot first.";roomExtEl.style.color="#B86816";return;}
+  roomExtEl.textContent="Checking availability...";roomExtEl.style.color="#7B6A58";
+  try{
+    const r=await fetch(BASE_URL+"/Availability",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload:{location_slug,date,guests:Number(guests)||10}})});
+    const data=await r.json();
+    const roomSlots=data.room_slots||[];
+    const extEnd=Number(end_ts)+3600000;
+    const anyFree=roomSlots.some(function(r){
+      return (r.slots||[]).some(function(s){return Number(s.start_ts)<extEnd&&Number(s.end_ts)>Number(end_ts);});
+    });
+    if(anyFree){roomExtEl.textContent="✅ The extra hour is available!";roomExtEl.style.color="#2E7D32";}
+    else{roomExtEl.textContent="❌ The extra hour is not available for this slot.";roomExtEl.style.color="#C62828";}
+  }catch(e){
+    roomExtEl.textContent="⚠️ Could not check availability.";roomExtEl.style.color="#B86816";
+  }
 }
 
 function renderGroupAddonCard(list,addon){
