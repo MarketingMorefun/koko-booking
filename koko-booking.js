@@ -309,6 +309,35 @@ g.addEventListener("blur",()=>{
 const n=parseInt(g.value||String(MIN_PARTY_SIZE),10);
 g.value=String(Number.isFinite(n)?Math.max(MIN_PARTY_SIZE,n):MIN_PARTY_SIZE);
 });
+if(!g.parentElement.classList.contains("koko-guest-stepper")){
+const wrapper=document.createElement("div");
+wrapper.className="koko-guest-stepper";
+g.parentElement.insertBefore(wrapper,g);
+wrapper.appendChild(g);
+const controls=document.createElement("div");
+controls.className="koko-guest-stepper-controls";
+const minusBtn=document.createElement("button");
+minusBtn.type="button";
+minusBtn.className="koko-guest-stepper-btn";
+minusBtn.textContent="−";
+const plusBtn=document.createElement("button");
+plusBtn.type="button";
+plusBtn.className="koko-guest-stepper-btn is-plus";
+plusBtn.textContent="+";
+minusBtn.addEventListener("click",()=>{
+const n=parseInt(g.value||String(MIN_PARTY_SIZE),10);
+g.value=String(Math.max(MIN_PARTY_SIZE,n-1));
+g.dispatchEvent(new Event("input",{bubbles:true}));
+});
+plusBtn.addEventListener("click",()=>{
+const n=parseInt(g.value||String(MIN_PARTY_SIZE),10);
+g.value=String(n+1);
+g.dispatchEvent(new Event("input",{bubbles:true}));
+});
+controls.appendChild(minusBtn);
+controls.appendChild(plusBtn);
+wrapper.appendChild(controls);
+}
 }
 function updateSummary(){
 if($("summaryLocation"))$("summaryLocation").textContent=locName(window.bookingState.location_slug)||"-";
