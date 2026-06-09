@@ -491,6 +491,7 @@ locationDescription();
 window.bookingState.available_package_ids=availablePackageIds(data);
 updatePackageVisibility();
 show("availabilitySection",true);
+window._kokoAvailData=data;
 renderAvailability(data);
 msg("Availability loaded. Please choose a room and slot.");
 }catch(e){
@@ -626,23 +627,19 @@ if(idx>-1)window.bookingState.addons[idx]=payload;
 else window.bookingState.addons.push(payload);
 }
 async function refresh(){const type=currentPackage();if(type)await getQuote(type,false)}
-async function checkRoomExtension(){
+function checkRoomExtension(){
 if(!roomExtAvailEl)return;
-const{location_slug,date,guests,party_room_id,end_ts}=window.bookingState;
-if(!location_slug||!date||!guests||!party_room_id||!end_ts){roomExtAvailEl.textContent="⚠️ Please select a room and slot first.";roomExtAvailEl.style.color="#B86816";return;}
-roomExtAvailEl.textContent="Checking availability...";roomExtAvailEl.style.color="#7B6A58";
-try{
-const r=await fetch(`${BASE_URL}/Availability`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload:{location_slug,date,guests:Number(guests)}})});
-const data=await r.json();
-console.log("[RoomExt] availability response",JSON.stringify(data).slice(0,500));
-const rooms=data.rooms||data.available_rooms||data||[];
+const{party_room_id,end_ts}=window.bookingState;
+if(!party_room_id||!end_ts){roomExtAvailEl.textContent="⚠️ Please select a room and slot first.";roomExtAvailEl.style.color="#B86816";return;}
+const data=window._kokoAvailData;
+if(!data){roomExtAvailEl.textContent="⚠️ Please check availability first.";roomExtAvailEl.style.color="#B86816";return;}
+const rooms=data.rooms||data.available_rooms||(Array.isArray(data)?data:[]);
 const room=rooms.find(rm=>(rm.party_room_id||rm.room_id||rm.id)===party_room_id);
 if(!room){roomExtAvailEl.textContent="⚠️ Room not found in availability.";roomExtAvailEl.style.color="#B86816";return;}
 const extEnd=Number(end_ts)+3600000;
 const hasSlot=(room.slots||[]).some(s=>Number(s.start_ts)<=Number(end_ts)&&Number(s.end_ts)>=extEnd);
 if(hasSlot){roomExtAvailEl.textContent="✅ The extra hour is available!";roomExtAvailEl.style.color="#2E7D32";}
 else{roomExtAvailEl.textContent="❌ The extra hour is not available for this slot.";roomExtAvailEl.style.color="#C62828";}
-}catch(e){console.error("[RoomExt] availability check failed",e);roomExtAvailEl.textContent="⚠️ Could not check availability.";roomExtAvailEl.style.color="#B86816";}
 }
 if(isGiftBag&&opts.length){
 wrap=el("div","",{display:"grid",gap:"10px",width:"100%"});
@@ -715,7 +712,7 @@ if(qty>0){sync();await refresh()}
 });
 }
 minus.addEventListener("click",async()=>{if(qty>0)qty--;sync();await refresh();if(isPartyRoomAddon&&roomExtAvailEl){if(qty<=0)roomExtAvailEl.textContent="";else checkRoomExtension();}});
-plus.addEventListener("click",async()=>{if(opts.length&&!isGiftBag&&!selected)return msg(`Please select an option for ${name}.`,true);qty++;sync();await refresh();if(isPartyRoomAddon)checkRoomExtension();});
+plus.addEventListener("click",async()=>{if(opts.length&&!isGiftBag&&!selected)return msg(`Please select an option for ${name}.`,true);qty++;sync();await refresh();if(isPartyRoomAddon&&roomExtAvailEl)checkRoomExtension();});
 qtyRow.appendChild(minus);
 qtyRow.appendChild(qtyText);
 qtyRow.appendChild(plus);
