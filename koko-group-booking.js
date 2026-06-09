@@ -770,15 +770,8 @@ async function loadGroupAddons(){
 
 function checkGroupRoomExtension(roomExtEl){
   if(!roomExtEl) return;
-  const{start_ts,end_ts}=window.groupBookingState;
-  if(!end_ts){roomExtEl.textContent="⚠️ Please select a time slot first.";roomExtEl.style.color="#B86816";return;}
-  const data=window._kokoGroupAvailData;
-  if(!data){roomExtEl.textContent="⚠️ Please check availability first.";roomExtEl.style.color="#B86816";return;}
-  const extEnd=Number(end_ts)+3600000;
-  const slots=data.group_slots||[];
-  const hasSlot=slots.some(function(s){return Number(s.start_ts)<extEnd&&(s.end_ts?Number(s.end_ts):Number(s.start_ts)+3600000)>Number(end_ts);});
-  if(hasSlot){roomExtEl.textContent="✅ The extra hour is available!";roomExtEl.style.color="#2E7D32";}
-  else{roomExtEl.textContent="❌ The extra hour is not available for this slot.";roomExtEl.style.color="#C62828";}
+  roomExtEl.textContent="ℹ️ Our team will confirm the extra hour availability after booking.";
+  roomExtEl.style.color="#7B6A58";
 }
 
 function renderGroupAddonCard(list,addon){
