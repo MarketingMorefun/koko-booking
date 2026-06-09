@@ -1,0 +1,549 @@
+#availabilitySection,
+#packageSection,
+#addonsSection,
+#contactSection,
+#reviewSection{
+  display:none;
+}
+
+.koko-room-carousel{
+  position:relative;
+  width:100%;
+  margin:8px 0 10px;
+}
+
+.koko-room-carousel-img{
+  width:100%;
+  height:430px;
+  object-fit:cover;
+  object-position:center;
+  border-radius:18px;
+  border:1px solid #E8DDCC;
+  display:block;
+  background:#faf6ee;
+  opacity:1;
+  transition:opacity .55s ease;
+  will-change:opacity;
+}
+
+.koko-room-carousel-img.is-clickable{
+  cursor:pointer;
+}
+
+.koko-room-carousel-img.is-fading{
+  opacity:0;
+}
+
+.koko-room-carousel-arrow{
+  position:absolute;
+  top:50%;
+  transform:translateY(-50%);
+  width:38px;
+  height:38px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.72);
+  background:rgba(47,36,28,.62);
+  color:#fff;
+  font-size:24px;
+  line-height:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  z-index:3;
+  padding:0;
+  pointer-events:auto;
+  user-select:none;
+}
+
+.koko-room-carousel-arrow.is-prev{
+  left:12px;
+}
+
+.koko-room-carousel-arrow.is-next{
+  right:12px;
+}
+
+.koko-room-carousel-count{
+  position:absolute;
+  right:12px;
+  bottom:12px;
+  padding:5px 10px;
+  border-radius:999px;
+  background:rgba(47,36,28,.68);
+  color:#fff;
+  font-size:12px;
+  font-weight:800;
+  line-height:1;
+  z-index:2;
+  pointer-events:none;
+  font-family:'Maven Pro',Arial,sans-serif;
+}
+
+.koko-room-carousel-dots{
+  position:absolute;
+  left:50%;
+  bottom:14px;
+  transform:translateX(-50%);
+  display:flex;
+  gap:8px;
+  align-items:center;
+  z-index:4;
+  pointer-events:auto;
+}
+
+.koko-room-carousel-dot{
+  width:9px;
+  height:9px;
+  border-radius:999px;
+  background:rgba(255,255,255,.48);
+  cursor:pointer;
+  box-shadow:0 1px 5px rgba(47,36,28,.38);
+  transition:transform .15s ease,background .15s ease;
+  pointer-events:auto;
+}
+
+.koko-room-carousel-dot.is-active{
+  background:#fff;
+  transform:scale(1.18);
+}
+
+#addonsList{
+  align-items:start !important;
+}
+
+#addonsList > .koko-addon-card{
+  align-self:start !important;
+  height:auto !important;
+  break-inside:avoid;
+  margin-bottom:16px;
+}
+
+#locationDescription.koko-location-preview{
+  grid-column:1/-1;
+  margin-top:12px;
+  width:100%;
+  min-height:260px;
+  padding:20px;
+  border:1px solid #E9DEC9;
+  border-radius:22px;
+  background:#FFFBF5;
+  box-shadow:0 4px 18px rgba(0,0,0,.03);
+  display:flex;
+  gap:24px;
+  align-items:stretch;
+  box-sizing:border-box;
+  opacity:0;
+  transform:translateY(8px);
+  transition:opacity .25s ease,transform .25s ease,box-shadow .25s ease;
+}
+
+#locationDescription.koko-location-preview.is-visible{
+  opacity:1;
+  transform:translateY(0);
+}
+
+#locationDescription.koko-location-preview:hover{
+  box-shadow:0 8px 24px rgba(0,0,0,.05);
+}
+
+#locationDescription.koko-location-preview.is-no-image{
+  display:block;
+}
+
+.koko-location-image{
+  width:min(100%,640px);
+  min-width:0;
+  aspect-ratio:5/3;
+  height:auto;
+  flex:0 0 clamp(400px,52%,640px);
+  align-self:flex-start;
+  border-radius:18px;
+  overflow:hidden;
+  background:#F5EFE5;
+}
+
+.koko-location-image img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+
+.koko-location-content{
+  flex:1;
+  min-width:0;
+  display:grid;
+  align-content:center;
+  gap:20px;
+}
+
+.koko-location-header{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:12px;
+}
+
+.koko-location-header h4{
+  margin:0;
+  color:#2F241C;
+  font-size:20px;
+  line-height:1.15;
+  font-weight:800;
+}
+
+.koko-badge,
+.koko-tags span{
+  display:inline-flex;
+  align-items:center;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:800;
+  line-height:1;
+  white-space:nowrap;
+}
+
+.koko-badge{
+  padding:7px 10px;
+  background:#FFF0D5;
+  color:#B86816;
+}
+
+.koko-tags{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:flex-start;
+  align-content:flex-start;
+}
+
+.koko-tags span{
+  padding:8px 12px;
+  background:#F5EFE5;
+  color:#7B6A58;
+}
+
+.koko-location-desc{
+  color:#6D6155;
+  font-family:'Maven Pro',Arial,sans-serif;
+  font-size:15px;
+  line-height:1.6;
+}
+
+.koko-location-note{
+  color:#C37A22;
+  font-family:'Maven Pro',Arial,sans-serif;
+  font-size:13px;
+  font-weight:800;
+  line-height:1.45;
+}
+
+@media(max-width:991px) and (min-width:768px){
+  #locationDescription.koko-location-preview{
+    grid-column:1/-1;
+  }
+
+  .koko-location-image{
+    width:min(100%,420px);
+    flex:0 0 44%;
+    aspect-ratio:5/3;
+    height:auto;
+  }
+}
+
+@media(max-width:767px){
+  #locationDescription.koko-location-preview{
+    grid-column:1/-1;
+    display:grid;
+    gap:14px;
+    min-height:0;
+    padding:14px;
+    border-radius:18px;
+  }
+
+  .koko-location-image{
+    width:100%;
+    min-width:0;
+    height:220px;
+  }
+
+  .koko-location-header h4{
+    font-size:18px;
+  }
+
+  .koko-location-desc{
+    font-size:14px;
+  }
+}
+
+.koko-guest-stepper{
+  position:relative;
+  width:100%;
+}
+
+.koko-guest-stepper input#guestCount{
+  padding-right:112px !important;
+  -moz-appearance:textfield;
+  position:relative;
+  z-index:1;
+}
+
+.koko-guest-stepper input#guestCount::-webkit-outer-spin-button,
+.koko-guest-stepper input#guestCount::-webkit-inner-spin-button{
+  -webkit-appearance:none;
+  margin:0;
+}
+
+.koko-guest-stepper-controls{
+  position:absolute;
+  right:10px;
+  top:50%;
+  transform:translateY(-50%);
+  display:flex;
+  align-items:center;
+  gap:8px;
+  pointer-events:auto;
+  z-index:5;
+}
+
+.koko-guest-stepper-btn{
+  width:36px;
+  height:36px;
+  border-radius:10px;
+  border:1px solid #E8DDCC;
+  background:#fff;
+  color:#2F241C;
+  font-size:18px;
+  font-weight:800;
+  line-height:1;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+  font-family:'Maven Pro',Arial,sans-serif;
+  position:relative;
+  z-index:6;
+  touch-action:manipulation;
+}
+
+.koko-guest-stepper-btn.is-plus{
+  border-color:#F28C28;
+  background:#FFF7EB;
+  color:#B86816;
+}
+
+.koko-guest-stepper-btn.is-disabled,
+.koko-guest-stepper-btn:disabled{
+  opacity:.38;
+  cursor:not-allowed;
+}
+
+.koko-addon-card{
+  background:#FFFDF9;
+  border:1px solid #E8DDCC;
+  border-radius:20px;
+  padding:18px;
+  display:grid;
+  gap:12px;
+  min-height:170px;
+  align-content:start;
+}
+
+.koko-package-grid{
+  width:100%;
+}
+
+.koko-package-grid > *{
+  min-width:0;
+}
+
+.koko-addon-card:has(.koko-addon-select-wrap){
+  min-height:235px;
+}
+
+.koko-addon-card:has(input[placeholder*="allergies"]){
+  grid-column:span 1;
+  min-height:auto;
+}
+
+.koko-addon-title-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-height:32px;
+}
+
+.koko-addon-title{
+  font-size:18px;
+  font-weight:800;
+  color:#2F241C;
+  line-height:1.2;
+}
+
+.koko-addon-meta{
+  color:#7B6A58;
+  font-size:14px;
+  line-height:1.4;
+  min-height:22px;
+}
+
+.koko-addon-note{
+  color:#7B6A58;
+  font-size:13px;
+  line-height:1.4;
+  margin-top:-4px;
+}
+
+.koko-addon-image-wrap{
+  width:100%;
+  overflow:hidden;
+  border-radius:14px;
+  border:1px solid #E8DDCC;
+  background:#faf6ee;
+  aspect-ratio:16/9;
+}
+
+.koko-addon-image{
+  width:100%;
+  height:100%;
+  display:block;
+  object-fit:cover;
+  object-position:center;
+}
+
+.koko-addon-select-wrap{
+  position:relative;
+  width:100%;
+  margin-top:4px;
+}
+
+.koko-addon-select{
+  width:100%;
+  min-height:46px;
+  padding:0 42px 0 14px;
+  border:1px solid #E8DDCC;
+  border-radius:12px;
+  background:#faf6ee;
+  color:#7b6a58;
+  font-size:14px;
+  font-family:'Maven Pro',sans-serif;
+  outline:none;
+  box-sizing:border-box;
+  appearance:none;
+  -webkit-appearance:none;
+  cursor:pointer;
+}
+
+.koko-addon-arrow{
+  position:absolute;
+  right:14px;
+  top:50%;
+  transform:translateY(-50%);
+  pointer-events:none;
+  color:#7b6a58;
+  font-size:14px;
+}
+
+.koko-addon-qty-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-top:auto;
+}
+
+.koko-addon-qty-btn{
+  width:40px;
+  height:40px;
+  border-radius:10px;
+  cursor:pointer;
+  font-size:18px;
+}
+
+.koko-addon-minus{
+  border:1px solid #E8DDCC;
+  background:#fff;
+  color:#2F241C;
+}
+
+.koko-addon-plus{
+  border:1px solid #F28C28;
+  background:#FFF7EB;
+  color:#B86816;
+}
+
+.koko-addon-qty-text{
+  min-width:28px;
+  text-align:center;
+  font-weight:700;
+  color:#2F241C;
+}
+
+.koko-addon-help{
+  width:22px;
+  height:22px;
+  border-radius:999px;
+  border:1px solid #E8DDCC;
+  background:#fff;
+  color:#B86816;
+  cursor:pointer;
+  position:relative;
+  font-weight:800;
+}
+
+.koko-addon-tooltip{
+  display:none;
+  position:absolute;
+  left:50%;
+  bottom:130%;
+  transform:translateX(-50%);
+  width:240px;
+  padding:10px 12px;
+  border-radius:12px;
+  background:#2F241C;
+  color:#fff;
+  font-size:12px;
+  line-height:1.4;
+  font-weight:500;
+  z-index:99;
+  text-align:left;
+}
+
+.koko-addon-help.is-open .koko-addon-tooltip{
+  display:block;
+}
+
+.koko-addon-card input[placeholder*="allergies"]{
+  margin-top:4px;
+}
+
+.koko-addon-card:has(input[placeholder*="allergies"]) > div[style*="gap: 10px"],
+.koko-addon-card:has(input[placeholder*="allergies"]) > div[style*="gap:10px"]{
+  gap:8px !important;
+}
+
+.koko-addon-card:has(input[placeholder*="allergies"]) .koko-addon-qty-btn{
+  width:34px;
+  height:34px;
+  border-radius:10px;
+}
+
+@media(max-width:767px){
+  .koko-room-carousel-img{
+    height:250px;
+  }
+
+  .koko-addon-card,
+  .koko-addon-card:has(.koko-addon-select-wrap){
+    min-height:auto;
+  }
+
+  .koko-addon-title{
+    font-size:16px;
+  }
+
+  .koko-addon-meta{
+    font-size:13px;
+  }
+}
