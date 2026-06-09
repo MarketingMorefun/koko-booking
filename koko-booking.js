@@ -633,8 +633,10 @@ const{party_room_id,end_ts}=window.bookingState;
 if(!party_room_id||!end_ts){roomExtAvailEl.textContent="⚠️ Please select a room and slot first.";roomExtAvailEl.style.color="#B86816";return;}
 const data=window._kokoAvailData;
 if(!data){roomExtAvailEl.textContent="⚠️ Please check availability first.";roomExtAvailEl.style.color="#B86816";return;}
-const rooms=data.rooms||data.available_rooms||(Array.isArray(data)?data:[]);
-const room=rooms.find(rm=>(rm.party_room_id||rm.room_id||rm.id)===party_room_id);
+const roomSlots=data.room_slots||[];
+const map={};
+roomSlots.forEach(r=>{const key=r.party_room_id||r.room_id||r.id;if(!map[key])map[key]={party_room_id:key,slots:[]};if(Array.isArray(r.slots))r.slots.forEach(s=>map[key].slots.push(s));});
+const room=map[party_room_id];
 if(!room){roomExtAvailEl.textContent="⚠️ Room not found in availability.";roomExtAvailEl.style.color="#B86816";return;}
 const extEnd=Number(end_ts)+3600000;
 const hasSlot=(room.slots||[]).some(s=>Number(s.start_ts)<=Number(end_ts)&&Number(s.end_ts)>=extEnd);
