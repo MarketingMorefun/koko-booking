@@ -774,7 +774,7 @@ async function checkGroupRoomExtension(roomExtEl){
   if(!end_ts){roomExtEl.textContent="⚠️ Please select a time slot first.";roomExtEl.style.color="#B86816";return;}
   roomExtEl.textContent="Checking availability...";roomExtEl.style.color="#7B6A58";
   try{
-    const r=await fetch(BASE_URL+"/Availability",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload:{location_slug,date,guests:Number(guests)||10}})});
+    const r=await fetch(BASE_URL+"/Availability",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload:{location_slug,date,guests:1}})});
     const data=await r.json();
     const roomSlots=data.room_slots||[];
     const extEnd=Number(end_ts)+3600000;
