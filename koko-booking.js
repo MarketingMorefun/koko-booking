@@ -550,6 +550,7 @@ if(!addonId)return;
 console.log("[KOKO addon]",addonId,addon.name||addon.addon_name);
 const isGiftBag=Number(addonId)===8;
 const isBirthdayBox=Number(addonId)===12;
+const isPartyRoomAddon=Number(addonId)===7;
 const name=addon.name||addon.addon_name||"Addon";
 const price=addonPrice(addon);
 const unit=addon.unit_type||"flat";
@@ -561,6 +562,7 @@ let selected=existing?(existing.option||""):"";
 let giftBagOptionQty={};
 let allergyInput=null;
 let themeInput=null;
+let roomExtAvailEl=null;
 const card=el("div","");
 card.className="koko-addon-card";
 const row=el("div","");
@@ -624,6 +626,23 @@ if(idx>-1)window.bookingState.addons[idx]=payload;
 else window.bookingState.addons.push(payload);
 }
 async function refresh(){const type=currentPackage();if(type)await getQuote(type,false)}
+async function checkRoomExtension(){
+if(!roomExtAvailEl)return;
+const{location_slug,date,guests,party_room_id,end_ts}=window.bookingState;
+if(!location_slug||!date||!guests||!party_room_id||!end_ts){roomExtAvailEl.textContent="⚠️ Please select a room and slot first.";roomExtAvailEl.style.color="#B86816";return;}
+roomExtAvailEl.textContent="Checking availability...";roomExtAvailEl.style.color="#7B6A58";
+try{
+const r=await fetch(`${BASE_URL}/Availability`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload:{location_slug,date,guests:Number(guests)}})});
+const data=await r.json();
+const rooms=data.rooms||data.available_rooms||data||[];
+const room=rooms.find(rm=>(rm.party_room_id||rm.room_id||rm.id)===party_room_id);
+if(!room){roomExtAvailEl.textContent="⚠️ Room not found in availability.";roomExtAvailEl.style.color="#B86816";return;}
+const extEnd=Number(end_ts)+3600000;
+const hasSlot=(room.slots||[]).some(s=>Number(s.start_ts)<=Number(end_ts)&&Number(s.end_ts)>=extEnd);
+if(hasSlot){roomExtAvailEl.textContent="✅ The extra hour is available!";roomExtAvailEl.style.color="#2E7D32";}
+else{roomExtAvailEl.textContent="❌ The extra hour is not available for this slot.";roomExtAvailEl.style.color="#C62828";}
+}catch(e){roomExtAvailEl.textContent="⚠️ Could not check availability.";roomExtAvailEl.style.color="#B86816";}
+}
 if(isGiftBag&&opts.length){
 wrap=el("div","",{display:"grid",gap:"10px",width:"100%"});
 opts.forEach(o=>{
@@ -694,8 +713,8 @@ selected=select.value;
 if(qty>0){sync();await refresh()}
 });
 }
-minus.addEventListener("click",async()=>{if(qty>0)qty--;sync();await refresh()});
-plus.addEventListener("click",async()=>{if(opts.length&&!isGiftBag&&!selected)return msg(`Please select an option for ${name}.`,true);qty++;sync();await refresh()});
+minus.addEventListener("click",async()=>{if(qty>0)qty--;sync();await refresh();if(isPartyRoomAddon&&roomExtAvailEl){if(qty<=0)roomExtAvailEl.textContent="";else checkRoomExtension();}});
+plus.addEventListener("click",async()=>{if(opts.length&&!isGiftBag&&!selected)return msg(`Please select an option for ${name}.`,true);qty++;sync();await refresh();if(isPartyRoomAddon)checkRoomExtension();});
 qtyRow.appendChild(minus);
 qtyRow.appendChild(qtyText);
 qtyRow.appendChild(plus);
@@ -713,6 +732,12 @@ themeInput.value=existing&&existing.allergy_note?existing.allergy_note:"";
 Object.assign(themeInput.style,{width:"100%",minHeight:"46px",padding:"0 14px",border:"1px solid #E8DDCC",borderRadius:"12px",background:"#faf6ee",color:"#7b6a58",fontSize:"14px",outline:"none",boxSizing:"border-box"});
 themeInput.addEventListener("input",()=>{if(qty>0)sync()});
 card.appendChild(themeInput);
+}
+if(isPartyRoomAddon){
+roomExtAvailEl=el("div","");
+Object.assign(roomExtAvailEl.style,{fontSize:"13px",fontWeight:"700",lineHeight:"1.5",marginTop:"4px"});
+if(qty>0)checkRoomExtension();
+card.appendChild(roomExtAvailEl);
 }
 list.appendChild(card);
 });
@@ -840,7 +865,9 @@ const btn=clickedBtn||$("createBookingBtn")||findActionButton(document,["review"
 if(btn){btn.style.pointerEvents="none";btn.style.opacity=".75";btn.textContent="Creating booking..."}
 msg("Creating booking...");
 try{
-const payload=compactPayload({location_slug:window.bookingState.location_slug,date:window.bookingState.date,guests:Number(window.bookingState.guests||0),party_room_id:window.bookingState.party_room_id,start_ts:window.bookingState.start_ts,end_ts:window.bookingState.end_ts,package_id:window.bookingState.package_id,addons:quoteAddons(),customer_name:window.bookingState.customer_name,customer_phone:window.bookingState.customer_phone,customer_email:window.bookingState.customer_email,birthday_child_name:window.bookingState.birthday_child_name,birthday_child_gender:window.bookingState.birthday_child_gender,average_age:window.bookingState.average_age?Number(window.bookingState.average_age):undefined,booking_notes:window.bookingState.booking_notes});
+const hasPartyRoomAddon=window.bookingState.addons.some(a=>Number(a.addon_id)===7&&Number(a.qty||0)>0);
+const effectiveEndTs=hasPartyRoomAddon?Number(window.bookingState.end_ts)+3600000:window.bookingState.end_ts;
+const payload=compactPayload({location_slug:window.bookingState.location_slug,date:window.bookingState.date,guests:Number(window.bookingState.guests||0),party_room_id:window.bookingState.party_room_id,start_ts:window.bookingState.start_ts,end_ts:effectiveEndTs,package_id:window.bookingState.package_id,addons:quoteAddons(),customer_name:window.bookingState.customer_name,customer_phone:window.bookingState.customer_phone,customer_email:window.bookingState.customer_email,birthday_child_name:window.bookingState.birthday_child_name,birthday_child_gender:window.bookingState.birthday_child_gender,average_age:window.bookingState.average_age?Number(window.bookingState.average_age):undefined,booking_notes:window.bookingState.booking_notes});
 const r=await fetch(`${BASE_URL}/CreateBooking`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload})});
 const text=await r.text();
 if(!text.trim())return msg("CreateBooking API returned an empty response.",true);
