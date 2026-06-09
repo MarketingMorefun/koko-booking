@@ -281,6 +281,7 @@ async function loadGroupAvailability(){
     window.groupBookingState.available_packages=packages;
     window.groupBookingState.quote=null;
     window.groupBookingState.booking=null;
+    window._kokoGroupAvailData=data;
     renderGroupSlots(data.group_slots || []);
     renderGroupPackages(packages);
     show("groupSlotsSection");
@@ -767,6 +768,19 @@ async function loadGroupAddons(){
   }
 }
 
+function checkGroupRoomExtension(roomExtEl){
+  if(!roomExtEl) return;
+  const{start_ts,end_ts}=window.groupBookingState;
+  if(!end_ts){roomExtEl.textContent="⚠️ Please select a time slot first.";roomExtEl.style.color="#B86816";return;}
+  const data=window._kokoGroupAvailData;
+  if(!data){roomExtEl.textContent="⚠️ Please check availability first.";roomExtEl.style.color="#B86816";return;}
+  const extEnd=Number(end_ts)+3600000;
+  const slots=data.group_slots||[];
+  const hasSlot=slots.some(function(s){return Number(s.start_ts)<extEnd&&(s.end_ts?Number(s.end_ts):Number(s.start_ts)+3600000)>Number(end_ts);});
+  if(hasSlot){roomExtEl.textContent="✅ The extra hour is available!";roomExtEl.style.color="#2E7D32";}
+  else{roomExtEl.textContent="❌ The extra hour is not available for this slot.";roomExtEl.style.color="#C62828";}
+}
+
 function renderGroupAddonCard(list,addon){
   const addonId=addon.addon_id || addon.id;
   if(!addonId) return;
@@ -774,6 +788,7 @@ function renderGroupAddonCard(list,addon){
   let selected="";
   const opts=addonOptions(addon);
   const isBilliards=Number(addonId)===2;
+  const isPartyRoom=Number(addonId)===7;
   const billiardsMin=isBilliards?Math.max(3,Math.ceil((window.groupBookingState.guests||10)/4)):0;
   const card=el("div","");
   card.className="koko-addon-card";
@@ -849,10 +864,42 @@ function renderGroupAddonCard(list,addon){
     hint.style.cssText="font-size:12px;color:#B86816;font-weight:700;font-family:'Maven Pro',Arial,sans-serif;";
     card.appendChild(hint);
   }
-  row.appendChild(minus);
-  row.appendChild(count);
-  row.appendChild(plus);
-  card.appendChild(row);
+  if(isPartyRoom){
+    const guests=window.groupBookingState.guests||0;
+    const toggleBtn=document.createElement("button");
+    toggleBtn.type="button";
+    toggleBtn.className="koko-addon-qty";
+    Object.assign(toggleBtn.style,{width:"auto",padding:"0 18px",minHeight:"40px",borderRadius:"12px",border:"1px solid #F28C28",background:"#FFF7EB",color:"#B86816",fontFamily:"'Maven Pro',Arial,sans-serif",fontSize:"14px",fontWeight:"800",cursor:"pointer"});
+    const roomExtEl=el("div","");
+    Object.assign(roomExtEl.style,{fontSize:"13px",fontWeight:"700",lineHeight:"1.5",marginTop:"4px"});
+    const setActive=function(on){
+      qty=on?guests:0;
+      sync();
+      if(on){
+        toggleBtn.textContent="✓ Added ("+guests+" guests)";
+        toggleBtn.style.background="#E8F5E9";
+        toggleBtn.style.borderColor="#2E7D32";
+        toggleBtn.style.color="#2E7D32";
+        checkGroupRoomExtension(roomExtEl);
+      }else{
+        toggleBtn.textContent="Add";
+        toggleBtn.style.background="#FFF7EB";
+        toggleBtn.style.borderColor="#F28C28";
+        toggleBtn.style.color="#B86816";
+        roomExtEl.textContent="";
+      }
+      loadGroupQuote();
+    };
+    setActive(false);
+    toggleBtn.addEventListener("click",function(){setActive(qty===0);});
+    card.appendChild(toggleBtn);
+    card.appendChild(roomExtEl);
+  }else{
+    row.appendChild(minus);
+    row.appendChild(count);
+    row.appendChild(plus);
+    card.appendChild(row);
+  }
   list.appendChild(card);
 }
 
@@ -1018,7 +1065,7 @@ async function createGroupBooking(){
       guests:window.groupBookingState.guests,
       package_id:window.groupBookingState.package_id,
       start_ts:window.groupBookingState.start_ts,
-      end_ts:window.groupBookingState.end_ts,
+      end_ts:window.groupBookingState.addons.some(function(a){return Number(a.addon_id)===7&&Number(a.qty||0)>0;})?Number(window.groupBookingState.end_ts)+3600000:window.groupBookingState.end_ts,
       addons:quoteAddons(),
       customer_name:window.groupBookingState.customer_name,
       customer_phone:window.groupBookingState.customer_phone,
