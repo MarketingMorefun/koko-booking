@@ -548,6 +548,7 @@ addons.forEach(addon=>{
 const addonId=addon.addon_id||addon.id;
 if(!addonId)return;
 const isGiftBag=Number(addonId)===8;
+const isBirthdayBox=Number(addonId)===12;
 const name=addon.name||addon.addon_name||"Addon";
 const price=addonPrice(addon);
 const unit=addon.unit_type||"flat";
@@ -558,6 +559,7 @@ let qty=existing?Number(existing.qty||0):0;
 let selected=existing?(existing.option||""):"";
 let giftBagOptionQty={};
 let allergyInput=null;
+let themeInput=null;
 const card=el("div","");
 card.className="koko-addon-card";
 const row=el("div","");
@@ -610,6 +612,8 @@ if(n>0)parts.push(label+" x "+n);
 payload.option="mixed";
 payload.option_label=parts.join(", ");
 payload.allergy_note=allergyInput?allergyInput.value.trim():"";
+}else if(isBirthdayBox){
+payload.theme_note=themeInput?themeInput.value.trim():"";
 }else if(opts.length&&selected){
 const found=opts.find(o=>String(o.value||o.label)===String(selected));
 payload.option=selected;
@@ -700,6 +704,15 @@ if(noteEl)card.appendChild(noteEl);
 if(addonImg)card.appendChild(addonImg);
 if(wrap)card.appendChild(wrap);
 if(!isGiftBag)card.appendChild(qtyRow);
+if(isBirthdayBox){
+themeInput=document.createElement("input");
+themeInput.type="text";
+themeInput.placeholder="Any theme preferences? e.g. favourite colours, characters or series";
+themeInput.value=existing&&existing.theme_note?existing.theme_note:"";
+Object.assign(themeInput.style,{width:"100%",minHeight:"46px",padding:"0 14px",border:"1px solid #E8DDCC",borderRadius:"12px",background:"#faf6ee",color:"#7b6a58",fontSize:"14px",outline:"none",boxSizing:"border-box"});
+themeInput.addEventListener("input",()=>{if(qty>0)sync()});
+card.appendChild(themeInput);
+}
 list.appendChild(card);
 });
 show("addonsSection",false);
