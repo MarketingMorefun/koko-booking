@@ -435,3 +435,14 @@
     width:100% !important;
   }
 }
+
+/* Guest stepper */
+.koko-guest-stepper{position:relative;width:100%;}
+.koko-guest-stepper input{padding-right:128px !important;-moz-appearance:textfield;}
+.koko-guest-stepper input::-webkit-outer-spin-button,
+.koko-guest-stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+.koko-guest-stepper-controls{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:6px;pointer-events:auto;z-index:5;}
+.koko-guest-stepper-btn{width:46px;height:46px;border-radius:12px;border:2px solid #E8DDCC;background:#fff;color:#2F241C;font-size:24px;font-weight:800;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;font-family:'Maven Pro',Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);transition:transform .1s ease,box-shadow .1s ease;}
+.koko-guest-stepper-btn:active{transform:scale(.93);box-shadow:none;}
+.koko-guest-stepper-btn.is-plus{border-color:#F28C28;background:#FFF7EB;color:#B86816;box-shadow:0 2px 6px rgba(242,140,40,.18);}
+.koko-guest-stepper-btn.is-disabled,.koko-guest-stepper-btn:disabled{opacity:.38;cursor:not-allowed;}

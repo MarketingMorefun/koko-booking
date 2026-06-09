@@ -167,6 +167,41 @@ function syncBasics(){
   window.groupBookingState.guests=parseInt(val("groupGuests") || "0",10) || 0;
 }
 
+function setupGuestStepper(){
+  const g=document.getElementById("groupGuests");
+  if(!g||g.parentElement.classList.contains("koko-guest-stepper")) return;
+  const wrapper=document.createElement("div");
+  wrapper.className="koko-guest-stepper";
+  g.parentElement.insertBefore(wrapper,g);
+  wrapper.appendChild(g);
+  const controls=document.createElement("div");
+  controls.className="koko-guest-stepper-controls";
+  const minusBtn=document.createElement("button");
+  minusBtn.type="button";
+  minusBtn.className="koko-guest-stepper-btn";
+  minusBtn.textContent="−";
+  const plusBtn=document.createElement("button");
+  plusBtn.type="button";
+  plusBtn.className="koko-guest-stepper-btn is-plus";
+  plusBtn.textContent="+";
+  const MIN=Number(g.min)||1;
+  minusBtn.addEventListener("click",function(){
+    const n=parseInt(g.value||String(MIN),10);
+    g.value=String(Math.max(MIN,n-1));
+    g.dispatchEvent(new Event("input",{bubbles:true}));
+    g.dispatchEvent(new Event("change",{bubbles:true}));
+  });
+  plusBtn.addEventListener("click",function(){
+    const n=parseInt(g.value||String(MIN),10);
+    g.value=String(n+1);
+    g.dispatchEvent(new Event("input",{bubbles:true}));
+    g.dispatchEvent(new Event("change",{bubbles:true}));
+  });
+  controls.appendChild(minusBtn);
+  controls.appendChild(plusBtn);
+  wrapper.appendChild(controls);
+}
+
 function setupDate(){
   const input=$("groupDate");
   if(!input) return;
@@ -1092,6 +1127,7 @@ function applyParams(){
 
 function init(){
   setupDate();
+  setupGuestStepper();
   syncBasics();
   hide("groupSlotsSection");
   hide("groupPackagesSection");
