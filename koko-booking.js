@@ -614,7 +614,7 @@ payload.option="mixed";
 payload.option_label=parts.join(", ");
 payload.allergy_note=allergyInput?allergyInput.value.trim():"";
 }else if(isBirthdayBox){
-payload.theme_note=themeInput?themeInput.value.trim():"";
+payload.allergy_note=themeInput?themeInput.value.trim():"";
 }else if(opts.length&&selected){
 const found=opts.find(o=>String(o.value||o.label)===String(selected));
 payload.option=selected;
@@ -709,7 +709,7 @@ if(isBirthdayBox){
 themeInput=document.createElement("input");
 themeInput.type="text";
 themeInput.placeholder="Any theme preferences? e.g. favourite colours, characters or series";
-themeInput.value=existing&&existing.theme_note?existing.theme_note:"";
+themeInput.value=existing&&existing.allergy_note?existing.allergy_note:"";
 Object.assign(themeInput.style,{width:"100%",minHeight:"46px",padding:"0 14px",border:"1px solid #E8DDCC",borderRadius:"12px",background:"#faf6ee",color:"#7b6a58",fontSize:"14px",outline:"none",boxSizing:"border-box"});
 themeInput.addEventListener("input",()=>{if(qty>0)sync()});
 card.appendChild(themeInput);
