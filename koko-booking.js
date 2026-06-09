@@ -639,7 +639,7 @@ roomSlots.forEach(r=>{const key=r.party_room_id||r.room_id||r.id;if(!map[key])ma
 const room=map[party_room_id];
 if(!room){roomExtAvailEl.textContent="⚠️ Room not found in availability.";roomExtAvailEl.style.color="#B86816";return;}
 const extEnd=Number(end_ts)+3600000;
-const hasSlot=(room.slots||[]).some(s=>Number(s.start_ts)<=Number(end_ts)&&Number(s.end_ts)>=extEnd);
+const hasSlot=(room.slots||[]).some(s=>Number(s.start_ts)<extEnd&&Number(s.end_ts)>Number(end_ts));
 if(hasSlot){roomExtAvailEl.textContent="✅ The extra hour is available!";roomExtAvailEl.style.color="#2E7D32";}
 else{roomExtAvailEl.textContent="❌ The extra hour is not available for this slot.";roomExtAvailEl.style.color="#C62828";}
 }
