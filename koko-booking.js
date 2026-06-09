@@ -713,9 +713,27 @@ if(qty>0){sync();await refresh()}
 }
 minus.addEventListener("click",async()=>{if(qty>0)qty--;sync();await refresh();if(isPartyRoomAddon&&roomExtAvailEl){if(qty<=0)roomExtAvailEl.textContent="";else checkRoomExtension();}});
 plus.addEventListener("click",async()=>{if(opts.length&&!isGiftBag&&!selected)return msg(`Please select an option for ${name}.`,true);qty++;sync();await refresh();if(isPartyRoomAddon&&roomExtAvailEl)checkRoomExtension();});
+if(isPartyRoomAddon){
+const guests=Number(window.bookingState.guests||0);
+const toggleBtn=document.createElement("button");
+toggleBtn.type="button";
+toggleBtn.className="koko-addon-qty-btn koko-addon-plus";
+Object.assign(toggleBtn.style,{width:"auto",padding:"0 18px",fontSize:"14px",fontWeight:"800"});
+const setActive=(on)=>{
+qty=on?guests:0;
+sync();
+if(on){toggleBtn.textContent=`✓ Added (${guests} guests)`;toggleBtn.style.background="#E8F5E9";toggleBtn.style.borderColor="#2E7D32";toggleBtn.style.color="#2E7D32";checkRoomExtension();}
+else{toggleBtn.textContent="Add";toggleBtn.style.background="#FFF7EB";toggleBtn.style.borderColor="#F28C28";toggleBtn.style.color="#B86816";if(roomExtAvailEl)roomExtAvailEl.textContent="";}
+refresh();
+};
+setActive(qty>0);
+toggleBtn.addEventListener("click",()=>setActive(qty===0));
+qtyRow.appendChild(toggleBtn);
+}else{
 qtyRow.appendChild(minus);
 qtyRow.appendChild(qtyText);
 qtyRow.appendChild(plus);
+}
 card.appendChild(row);
 card.appendChild(meta);
 if(noteEl)card.appendChild(noteEl);
