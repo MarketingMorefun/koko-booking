@@ -577,7 +577,6 @@ Object.assign(list.style,{display:"grid",gridTemplateColumns:innerWidth<=767?"1f
 addons.forEach(addon=>{
 const addonId=addon.addon_id||addon.id;
 if(!addonId)return;
-console.log("[KOKO addon]",addonId,addon.name||addon.addon_name);
 const isGiftBag=Number(addonId)===8;
 const isBirthdayBox=Number(addonId)===12;
 const isPartyRoomAddon=Number(addonId)===7;
