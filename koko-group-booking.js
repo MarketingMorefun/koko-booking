@@ -850,21 +850,21 @@ function renderGroupAddonCard(list,addon){
     if(idx>-1) window.groupBookingState.addons[idx]=payload;
     else window.groupBookingState.addons.push(payload);
   }
-  minus.addEventListener("click",async function(){
+  minus.addEventListener("click",function(){
     const minQty=isBilliards&&qty>0?billiardsMin:0;
     if(qty>minQty) qty--;
     else if(isBilliards&&qty>0) qty=0;
     sync();
-    await loadGroupQuote();
+    debouncedGroupQuote();
   });
-  plus.addEventListener("click",async function(){
+  plus.addEventListener("click",function(){
     if(opts.length && !selected){
       return msg("Please select an option for " + (addon.name || "this add-on") + ".",true);
     }
     if(isBilliards&&qty===0) qty=billiardsMin;
     else qty++;
     sync();
-    await loadGroupQuote();
+    debouncedGroupQuote();
   });
   if(isBilliards){
     const hint=el("div","Minimum "+billiardsMin+" tables required (max 4 guests per table)");
@@ -910,6 +910,8 @@ function renderGroupAddonCard(list,addon){
   list.appendChild(card);
 }
 
+var _groupQuoteTimer=null;
+function debouncedGroupQuote(){clearTimeout(_groupQuoteTimer);_groupQuoteTimer=setTimeout(loadGroupQuote,300);}
 async function loadGroupQuote(){
   if(!window.groupBookingState.location_slug) return msg("Please select a location first.",true);
   if(!window.groupBookingState.guests) return msg("Please enter guest count first.",true);
@@ -1054,13 +1056,17 @@ function validateGroupContact(){
   return true;
 }
 
+var _groupBookingInProgress=false;
 async function createGroupBooking(){
-  if(!window.groupBookingState.location_slug) return msg("Please select a location first.",true);
-  if(!window.groupBookingState.date) return msg("Please select a date first.",true);
-  if(!window.groupBookingState.guests) return msg("Please enter guest count first.",true);
-  if(!window.groupBookingState.start_ts || !window.groupBookingState.end_ts) return msg("Please select a time slot first.",true);
-  if(!window.groupBookingState.package_id) return msg("Please select a package first.",true);
-  if(!validateGroupContact()) return;
+  if(_groupBookingInProgress) return;
+  _groupBookingInProgress=true;
+  const _bail=function(m){_groupBookingInProgress=false;return msg(m,true);};
+  if(!window.groupBookingState.location_slug) return _bail("Please select a location first.");
+  if(!window.groupBookingState.date) return _bail("Please select a date first.");
+  if(!window.groupBookingState.guests) return _bail("Please enter guest count first.");
+  if(!window.groupBookingState.start_ts || !window.groupBookingState.end_ts) return _bail("Please select a time slot first.");
+  if(!window.groupBookingState.package_id) return _bail("Please select a package first.");
+  if(!validateGroupContact()){_groupBookingInProgress=false;return;}
   const btn=$("groupReviewBtn");
   if(btn){btn.disabled=true;btn.style.pointerEvents="none";btn.style.opacity=".75";btn.textContent="Creating booking...";}
   msg("Creating booking...");
@@ -1098,6 +1104,7 @@ async function createGroupBooking(){
     console.error("Create group booking failed:",e);
     msg(e.message || "Failed to create booking.",true);
   }finally{
+    _groupBookingInProgress=false;
     if(btn){btn.disabled=false;btn.style.pointerEvents="auto";btn.style.opacity="1";btn.textContent="Review";}
   }
 }
