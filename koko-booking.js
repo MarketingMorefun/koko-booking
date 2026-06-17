@@ -654,7 +654,11 @@ payload.option_label=found?(found.label||selected):selected;
 if(idx>-1)window.bookingState.addons[idx]=payload;
 else window.bookingState.addons.push(payload);
 }
-async function refresh(){const type=currentPackage();if(type)await getQuote(type,false)}
+let _refreshTimer=null;
+function refresh(){
+  clearTimeout(_refreshTimer);
+  _refreshTimer=setTimeout(async()=>{const type=currentPackage();if(type)await getQuote(type,false);},300);
+}
 function checkRoomExtension(){
 if(!roomExtAvailEl)return;
 const{party_room_id,end_ts}=window.bookingState;
@@ -899,14 +903,18 @@ const btn=$("confirmBookingBtn")||$("confitmBookingBtn")||document.querySelector
 if(btn)btn.textContent="Pay $50 deposit";
 show("reviewSection",true);
 }
+let _bookingInProgress=false;
 async function createBooking(clickedBtn){
-if(!window.bookingState.location_slug)return msg("Please select a location first.",true);
-if(!window.bookingState.date)return msg("Please select a date first.",true);
-if(!window.bookingState.guests)return msg("Please enter guest count first.",true);
-if(!window.bookingState.party_room_id||!window.bookingState.start_ts||!window.bookingState.end_ts)return msg("Please select a room and slot first.",true);
-if(!window.bookingState.package_id)return msg("Please select a package first.",true);
-if(!window.bookingState.quote)return msg("Please wait for the quote to load first.",true);
-if(!validateContact())return;
+if(_bookingInProgress)return;
+_bookingInProgress=true;
+const _bail=(m)=>{_bookingInProgress=false;return msg(m,true)};
+if(!window.bookingState.location_slug)return _bail("Please select a location first.");
+if(!window.bookingState.date)return _bail("Please select a date first.");
+if(!window.bookingState.guests)return _bail("Please enter guest count first.");
+if(!window.bookingState.party_room_id||!window.bookingState.start_ts||!window.bookingState.end_ts)return _bail("Please select a room and slot first.");
+if(!window.bookingState.package_id)return _bail("Please select a package first.");
+if(!window.bookingState.quote)return _bail("Please wait for the quote to load first.");
+if(!validateContact()){_bookingInProgress=false;return;}
 const btn=clickedBtn||$("createBookingBtn")||findActionButton(document,["review","create booking","review booking"],"#createBookingBtn,[data-koko-action='create-booking'],[data-koko-action='review-booking']");
 if(btn){btn.style.pointerEvents="none";btn.style.opacity=".75";btn.textContent="Creating booking..."}
 msg("Creating booking...");
@@ -935,6 +943,7 @@ msg("Booking created. Please review and pay your $50 deposit.");
 }catch(e){
 msg(e.message||"Failed to create booking.",true);
 }finally{
+_bookingInProgress=false;
 if(btn){btn.style.pointerEvents="auto";btn.style.opacity="1";btn.textContent="Review"}
 }
 }
