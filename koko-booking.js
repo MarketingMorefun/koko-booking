@@ -844,6 +844,9 @@ return false;
 }
 if(!email)return msg("Please enter your email address.",true),false;
 if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return msg("Please enter a valid email address.",true),false;
+if(!childName)return msg("Please enter the birthday child's name.",true),false;
+if(!gender)return msg("Please select the birthday child's gender.",true),false;
+if(!age)return msg("Please enter the average age of guests.",true),false;
 Object.assign(window.bookingState,{customer_name:name,customer_phone:phone,customer_email:email,birthday_child_name:childName,birthday_child_gender:gender,average_age:age,booking_notes:notes});
 return true;
 }
