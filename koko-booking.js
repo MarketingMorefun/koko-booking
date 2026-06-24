@@ -834,19 +834,22 @@ function validateContact(){
 const name=val("customerName").trim(),phone=val("customerPhone").trim(),email=val("customerEmail").trim();
 const childName=val("birthdayChildName").trim();
 const gender=val("birthdayChildGender").trim(),age=val("averageAge").trim(),notes=val("bookingNotes").trim();
-clearFieldError("customerPhone");
-if(!name)return msg("Please enter your name.",true),false;
-const phoneError=validatePhone(phone);
-if(phoneError){
-setFieldError("customerPhone",phoneError);
-msg(phoneError,true);
+["customerName","customerPhone","customerEmail","birthdayChildName","birthdayChildGender","averageAge"].forEach(id=>clearFieldError(id));
+const fail=(id,message)=>{
+setFieldError(id,message);
+msg(message,true);
+const input=field(id);
+if(input){try{input.focus({preventScroll:true})}catch(_){input.focus()}input.scrollIntoView({behavior:"smooth",block:"center"});}
 return false;
-}
-if(!email)return msg("Please enter your email address.",true),false;
-if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return msg("Please enter a valid email address.",true),false;
-if(!childName)return msg("Please enter the birthday child's name.",true),false;
-if(!gender)return msg("Please select the birthday child's gender.",true),false;
-if(!age)return msg("Please enter the average age of guests.",true),false;
+};
+if(!name)return fail("customerName","Please enter your name.");
+const phoneError=validatePhone(phone);
+if(phoneError)return fail("customerPhone",phoneError);
+if(!email)return fail("customerEmail","Please enter your email address.");
+if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return fail("customerEmail","Please enter a valid email address.");
+if(!childName)return fail("birthdayChildName","Please enter the birthday child's name.");
+if(!gender)return fail("birthdayChildGender","Please select the birthday child's gender.");
+if(!age)return fail("averageAge","Please enter the average age of guests.");
 Object.assign(window.bookingState,{customer_name:name,customer_phone:phone,customer_email:email,birthday_child_name:childName,birthday_child_gender:gender,average_age:age,booking_notes:notes});
 return true;
 }
