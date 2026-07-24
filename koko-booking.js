@@ -209,6 +209,10 @@ if(/^\d{4}\/\d{2}\/\d{2}$/.test(v))return v.replace(/\//g,"-");
 const m=v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
 return m?`${m[3]}-${m[2]}-${m[1]}`:v;
 }
+function minDateStr(){
+const m=new Date(Date.now()+MIN_ADVANCE_MS);
+return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,"0")}-${String(m.getDate()).padStart(2,"0")}`;
+}
 function locationData(slug,o){
 const x=o||{},base=LOCATION_PREVIEWS[slug]||{},tags=[pick(x,"tag_1","tag1","Tag1"),pick(x,"tag_2","tag2","Tag2"),pick(x,"tag_3","tag3","Tag3")].filter(Boolean);
 return{
@@ -292,8 +296,7 @@ return `${timeAmPm(slot.start_label||slot.start_time_label||"")} - ${timeAmPm(sl
 function setupDate(){
 const d=field("bookingDate"),wrap=$("bookingDateWrap")||$("bookingDate");
 if(!d)return;
-const min=new Date(Date.now()+MIN_ADVANCE_MS);
-const s=`${min.getFullYear()}-${String(min.getMonth()+1).padStart(2,"0")}-${String(min.getDate()).padStart(2,"0")}`;
+const s=minDateStr();
 d.setAttribute("min",s);d.style.cursor="pointer";
 function open(){try{d.focus();if(typeof d.showPicker==="function")d.showPicker()}catch(e){d.focus()}}
 if(wrap){wrap.style.cursor="pointer";wrap.addEventListener("click",open)}
@@ -496,7 +499,7 @@ if(!rawLoc)return msg("Please select a location.",true);
 if(!d)return msg("Please enter a booking date.",true);
 if(!g||g<1)return msg("Please enter a valid guest count.",true);
 if(g<MIN_PARTY_SIZE)return msg(`Party bookings require a minimum of ${MIN_PARTY_SIZE} guests.`,true);
-if(new Date(d+"T00:00:00+11:00").getTime()<Date.now()+MIN_ADVANCE_MS)return msg("Bookings must be made at least 72 hours in advance.",true);
+if(d<minDateStr())return msg("Bookings must be made at least 72 hours in advance.",true);
 const max=locLimit(rawLoc);
 if(g>max){
 show("availabilitySection",true);
