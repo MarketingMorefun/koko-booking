@@ -68,11 +68,31 @@
       ul.appendChild(li);
     }
     box.appendChild(ul);
+    box.style.display="block";
+    box.style.textAlign="left";
+    box.style.marginTop="8px";
     /* Append INSIDE the existing value cell rather than inserting a new
        sibling row — the review list relies on flat label/value pairing
        (grid or repeated flex rows), and adding a sibling shifts every
        row after it by one slot. */
+    pkgEl.style.display="block";
     pkgEl.appendChild(box);
+  }
+  function removeWithEmptyAncestors(node){
+    var cur=node;
+    while(cur.parentElement){
+      var parent=cur.parentElement;
+      var meaningfulSiblings=0;
+      for(var k=0;k<parent.childNodes.length;k++){
+        var cn=parent.childNodes[k];
+        if(cn===cur)continue;
+        if(cn.nodeType===3&&!cn.textContent.trim())continue;
+        meaningfulSiblings++;
+      }
+      if(meaningfulSiblings===0)cur=parent;
+      else break;
+    }
+    if(cur.parentNode)cur.parentNode.removeChild(cur);
   }
   function trimFlowChrome(clone){
     var nodes=clone.querySelectorAll("*");
@@ -87,7 +107,7 @@
       }
     }
     for(var j=0;j<toRemove.length;j++){
-      if(toRemove[j].parentNode)toRemove[j].parentNode.removeChild(toRemove[j]);
+      if(toRemove[j].parentNode)removeWithEmptyAncestors(toRemove[j]);
     }
   }
   function stripIds(el){
