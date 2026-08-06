@@ -536,9 +536,9 @@ function groupPackageButton(card,pkg){
   btn.style.margin="20px 16px 16px";
   btn.style.padding="0 18px";
   btn.style.borderRadius="14px";
-  btn.style.background="#F28C28";
-  btn.style.border="1px solid #F28C28";
-  btn.style.color="#fff";
+  btn.style.background="#F5D949";
+  btn.style.border="2px solid #221D16";
+  btn.style.color="#221D16";
   btn.style.fontFamily="'Maven Pro',Arial,sans-serif";
   btn.style.fontSize="16px";
   btn.style.fontWeight="700";
@@ -557,9 +557,9 @@ function setPackageButton(btn,label,selected){
   btn.style.display="block";
   btn.style.visibility="visible";
   btn.style.opacity="1";
-  btn.style.background=selected ? "#D97818" : "#F28C28";
-  btn.style.borderColor=selected ? "#D97818" : "#F28C28";
-  btn.style.color="#fff";
+  btn.style.background=selected ? "#EFC838" : "#F5D949";
+  btn.style.borderColor="#221D16";
+  btn.style.color="#221D16";
   btn.style.fontSize="16px";
   btn.style.fontWeight="700";
   btn.style.letterSpacing="0";
@@ -879,7 +879,7 @@ function renderGroupAddonCard(list,addon){
     const toggleBtn=document.createElement("button");
     toggleBtn.type="button";
     toggleBtn.className="koko-addon-qty";
-    Object.assign(toggleBtn.style,{width:"auto",padding:"0 18px",minHeight:"40px",borderRadius:"12px",border:"1px solid #F28C28",background:"#FFF7EB",color:"#B86816",fontFamily:"'Maven Pro',Arial,sans-serif",fontSize:"14px",fontWeight:"800",cursor:"pointer"});
+    Object.assign(toggleBtn.style,{width:"auto",padding:"0 18px",minHeight:"40px",borderRadius:"12px",border:"2px solid #221D16",background:"#F5D949",color:"#221D16",fontFamily:"'Maven Pro',Arial,sans-serif",fontSize:"14px",fontWeight:"800",cursor:"pointer"});
     const roomExtEl=el("div","");
     Object.assign(roomExtEl.style,{fontSize:"13px",fontWeight:"700",lineHeight:"1.5",marginTop:"4px"});
     const setActive=function(on){
@@ -893,9 +893,9 @@ function renderGroupAddonCard(list,addon){
         checkGroupRoomExtension(roomExtEl);
       }else{
         toggleBtn.textContent="Add";
-        toggleBtn.style.background="#FFF7EB";
-        toggleBtn.style.borderColor="#F28C28";
-        toggleBtn.style.color="#B86816";
+        toggleBtn.style.background="#F5D949";
+        toggleBtn.style.borderColor="#221D16";
+        toggleBtn.style.color="#221D16";
         roomExtEl.textContent="";
       }
       loadGroupQuote();

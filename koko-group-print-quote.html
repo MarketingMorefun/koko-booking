@@ -3,7 +3,7 @@
      BELOW the existing <script src="...koko-group-booking.js"> line. Do not remove that line. -->
 <style>
 .koko-print-quote-wrap{display:flex;flex-direction:column;align-items:center;margin-top:18px}
-.koko-print-quote{display:inline-flex;align-items:center;gap:8px;padding:13px 20px;border:2px solid #221d16;border-radius:16px;background:#fffaf0;box-shadow:4px 4px 0 #221d16;font-weight:700;font-size:14px;color:#221d16;cursor:pointer;transition:all 140ms ease}
+.koko-print-quote{display:inline-flex;align-items:center;gap:8px;padding:13px 20px;border:2px solid #221d16;border-radius:16px;background:#F5D949;box-shadow:4px 4px 0 #221d16;font-weight:700;font-size:14px;color:#221d16;cursor:pointer;transition:all 140ms ease}
 .koko-print-quote:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 #221d16}
 .koko-print-quote:active{transform:translate(0,0);box-shadow:2px 2px 0 #221d16}
 .koko-print-hint{margin-top:8px;font-size:13px;color:#8a7d6a;text-align:center}
@@ -11,11 +11,11 @@
 .koko-print-head{font-family:'Poppins',Arial,sans-serif;color:#2F241C}
 .koko-print-head strong{font-size:18px;display:block;margin-bottom:6px}
 .koko-print-head span{font-size:12px;color:#7B6A58}
-.koko-print-includes{margin:4px 0 14px;padding:12px 14px;border:1px solid #E8DDCC;border-radius:12px;background:#FAF6EE;font-family:'Poppins',Arial,sans-serif}
-.koko-print-includes-title{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#B86816;margin-bottom:6px}
+.koko-print-includes{margin:4px 0 14px;padding:12px 14px;border:1px solid #221D16;border-radius:12px;background:#FAF6EE;font-family:'Poppins',Arial,sans-serif}
+.koko-print-includes-title{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#221D16;background:#F5D949;border:1px solid #221D16;border-radius:999px;padding:3px 10px;margin-bottom:8px}
 .koko-print-includes-list{margin:0;padding:0;list-style:none;display:grid;gap:3px}
 .koko-print-includes-list li{font-size:13px;color:#2F241C;padding-left:14px;position:relative}
-.koko-print-includes-list li:before{content:"✦";position:absolute;left:0;color:#B86816;font-size:11px}
+.koko-print-includes-list li:before{content:"✦";position:absolute;left:0;color:#221D16;font-size:11px}
 @media print{
   /* Remove every top-level element from layout — this is what actually stops
      the blank pages, since visibility:hidden alone still reserves space. */

@@ -67,13 +67,13 @@
   transition:all .18s ease;
 }
 .koko-time-range-btn:hover{
-  border-color:#F2B36F;
+  border-color:#221D16;
   transform:translateY(-1px);
 }
 .koko-time-range-btn.is-active{
-  border-color:#F28C28;
-  background:#F28C28;
-  color:#fff;
+  border-color:#221D16;
+  background:#F5D949;
+  color:#221D16;
 }
 .koko-time-range-btn span{
   display:block;
@@ -96,10 +96,10 @@
   width:100%;
   min-height:52px;
   padding:12px 16px;
-  border:1px solid rgba(242,140,40,.22);
+  border:1px solid #E8DDCC;
   border-radius:12px;
   background:#FFF7EB;
-  color:#B86816;
+  color:#2F241C;
   font-family:'Maven Pro',Arial,sans-serif;
   font-size:13px;
   font-weight:800;
@@ -109,13 +109,13 @@
   transition:all .18s ease;
 }
 .group-slot-btn:hover{
-  border-color:#F28C28;
+  border-color:#221D16;
   transform:translateY(-1px);
 }
 .group-slot-btn.is-active{
-  border-color:#F28C28;
-  background:#F28C28;
-  color:#fff;
+  border-color:#221D16;
+  background:#F5D949;
+  color:#221D16;
 }
 .group-package-btn,
 #packageCardTeamFun60 .w-button,
@@ -223,9 +223,10 @@
   min-width:86px;
   min-height:34px;
   padding:0 14px;
-  border:1px solid #E8DDCC;
+  border:2px solid #221D16;
   border-radius:999px;
-  color:#F28C28;
+  background:#F5D949;
+  color:#221D16;
   font-family:'Maven Pro',Arial,sans-serif;
   font-size:11px;
   font-weight:900;
@@ -313,16 +314,17 @@
   min-height:50px;
   margin-top:2px;
   padding:0 18px;
-  border:1px solid #F28C28;
+  border:2px solid #221D16;
   border-radius:14px;
-  background:#F28C28;
-  color:#fff;
+  background:#F5D949;
+  color:#221D16;
   font-family:'Maven Pro',Arial,sans-serif;
   font-size:15px;
   font-weight:900;
   line-height:1;
   cursor:pointer;
   box-sizing:border-box;
+  box-shadow:4px 4px 0 #221D16;
 }
 
 /* Package cards responsive fix */
@@ -444,5 +446,5 @@
 .koko-guest-stepper-controls{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:6px;pointer-events:auto;z-index:5;}
 .koko-guest-stepper-btn{width:46px;height:46px;border-radius:12px;border:2px solid #E8DDCC;background:#fff;color:#2F241C;font-size:24px;font-weight:800;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;font-family:'Maven Pro',Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.08);transition:transform .1s ease,box-shadow .1s ease;}
 .koko-guest-stepper-btn:active{transform:scale(.93);box-shadow:none;}
-.koko-guest-stepper-btn.is-plus{border-color:#F28C28;background:#FFF7EB;color:#B86816;box-shadow:0 2px 6px rgba(242,140,40,.18);}
+.koko-guest-stepper-btn.is-plus{border-color:#221D16;background:#F5D949;color:#221D16;box-shadow:2px 2px 0 #221D16;}
 .koko-guest-stepper-btn.is-disabled,.koko-guest-stepper-btn:disabled{opacity:.38;cursor:not-allowed;}

@@ -369,12 +369,12 @@ if(innerWidth<=991)return"repeat(3,minmax(0,1fr))";
 return"repeat(4,minmax(0,1fr))";
 }
 function slotDefault(btn){
-Object.assign(btn.style,{padding:innerWidth<=767?"11px 12px":"12px 16px",borderRadius:"12px",background:"#FFF7EB",border:"1px solid rgba(242,140,40,0.22)",color:"#B86816",fontSize:innerWidth<=767?"12px":"13px",fontWeight:"700",lineHeight:"1.3",cursor:"pointer",width:"100%",minHeight:innerWidth<=767?"48px":"52px"});
+Object.assign(btn.style,{padding:innerWidth<=767?"11px 12px":"12px 16px",borderRadius:"12px",background:"#FFF7EB",border:"1px solid #E8DDCC",color:"#2F241C",fontSize:innerWidth<=767?"12px":"13px",fontWeight:"700",lineHeight:"1.3",cursor:"pointer",width:"100%",minHeight:innerWidth<=767?"48px":"52px"});
 }
 function slotSelected(btn){
-btn.style.background="#F28C28";
-btn.style.border="1px solid #F28C28";
-btn.style.color="#fff";
+btn.style.background="#F5D949";
+btn.style.border="2px solid #221D16";
+btn.style.color="#221D16";
 }
 function selectedSlot(room,slot){
 window.bookingState.selected_room_name=room||"";
@@ -762,7 +762,7 @@ const setActive=(on)=>{
 qty=on?guests:0;
 sync();
 if(on){toggleBtn.textContent=`✓ Added (${guests} guests)`;toggleBtn.style.background="#E8F5E9";toggleBtn.style.borderColor="#2E7D32";toggleBtn.style.color="#2E7D32";checkRoomExtension();}
-else{toggleBtn.textContent="Add";toggleBtn.style.background="#FFF7EB";toggleBtn.style.borderColor="#F28C28";toggleBtn.style.color="#B86816";if(roomExtAvailEl)roomExtAvailEl.textContent="";}
+else{toggleBtn.textContent="Add";toggleBtn.style.background="#F5D949";toggleBtn.style.borderColor="#221D16";toggleBtn.style.color="#221D16";if(roomExtAvailEl)roomExtAvailEl.textContent="";}
 refresh();
 };
 setActive(qty>0);
