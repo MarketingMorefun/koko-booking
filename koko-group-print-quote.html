@@ -2,10 +2,11 @@
 <!-- Paste this into Webflow: /booking/group page settings → Custom code → Footer,
      BELOW the existing <script src="...koko-group-booking.js"> line. Do not remove that line. -->
 <style>
-.koko-print-quote{display:inline-flex;align-items:center;gap:8px;margin-top:18px;padding:13px 20px;border:2px solid #221d16;border-radius:16px;background:#fffaf0;box-shadow:4px 4px 0 #221d16;font-weight:700;font-size:14px;color:#221d16;cursor:pointer;transition:all 140ms ease}
+.koko-print-quote-wrap{display:flex;flex-direction:column;align-items:center;margin-top:18px}
+.koko-print-quote{display:inline-flex;align-items:center;gap:8px;padding:13px 20px;border:2px solid #221d16;border-radius:16px;background:#fffaf0;box-shadow:4px 4px 0 #221d16;font-weight:700;font-size:14px;color:#221d16;cursor:pointer;transition:all 140ms ease}
 .koko-print-quote:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 #221d16}
 .koko-print-quote:active{transform:translate(0,0);box-shadow:2px 2px 0 #221d16}
-.koko-print-hint{margin-top:8px;font-size:13px;color:#8a7d6a}
+.koko-print-hint{margin-top:8px;font-size:13px;color:#8a7d6a;text-align:center}
 .koko-print-head{display:none}
 @media print{
   body *{visibility:hidden !important}
@@ -21,12 +22,15 @@
   function build(){
     var sec=document.getElementById("groupReviewSection");
     if(!sec||sec.getAttribute("data-print-ready"))return;
+    var payBtn=document.getElementById("groupConfirmBtn");
+    var card=(payBtn&&payBtn.parentNode)?payBtn.parentNode:sec;
     sec.setAttribute("data-print-ready","1");
     var head=document.createElement("div");
     head.className="koko-print-head";
     head.innerHTML='<strong>KOKO Amusement — Group Booking Quote</strong><br>Generated '+new Date().toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"})+'<br>Enquiries: marketing@morefun.com.au';
     sec.insertBefore(head,sec.firstChild);
     var wrap=document.createElement("div");
+    wrap.className="koko-print-quote-wrap";
     var btn=document.createElement("button");
     btn.type="button";
     btn.className="koko-print-quote";
@@ -35,7 +39,7 @@
     var hint=document.createElement("div");
     hint.className="koko-print-hint";
     hint.textContent="Choose “Save as PDF” in the print dialog to send it to your manager for approval.";
-    wrap.appendChild(btn);wrap.appendChild(hint);sec.appendChild(wrap);
+    wrap.appendChild(btn);wrap.appendChild(hint);card.appendChild(wrap);
   }
   function watch(){
     var sec=document.getElementById("groupReviewSection");
