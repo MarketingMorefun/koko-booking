@@ -1,0 +1,377 @@
+<style>
+  .koko-success-page {
+    min-height: 80vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 64px 20px;
+    background: #faf6ee;
+    font-family: "Maven Pro", Arial, sans-serif;
+    box-sizing: border-box;
+  }
+
+  .koko-success-card {
+    width: 100%;
+    max-width: 860px;
+    background: #fffdf9;
+    border: 1px solid #eadfce;
+    border-radius: 24px;
+    padding: 42px;
+    text-align: center;
+    box-shadow: 0 18px 48px rgba(47, 36, 28, 0.09);
+    box-sizing: border-box;
+  }
+
+  .koko-success-mark {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: #eaf8ef;
+    color: #2f8f5b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 34px;
+    font-weight: 900;
+    margin: 0 auto 18px;
+  }
+
+  .koko-success-badge,
+  .koko-invite-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .koko-success-badge {
+    padding: 8px 14px;
+    background: #eaf8ef;
+    color: #2f8f5b;
+    margin-bottom: 18px;
+  }
+
+  .koko-success-title {
+    margin: 0 0 12px;
+    color: #2f241c;
+    font-size: 42px;
+    line-height: 1.1;
+    font-weight: 900;
+    letter-spacing: 0;
+  }
+
+  .koko-success-copy {
+    margin: 0 auto 24px;
+    color: #7b6a58;
+    font-size: 17px;
+    line-height: 1.55;
+    max-width: 560px;
+  }
+
+  .koko-booking-id {
+    background: #faf6ee;
+    border: 1px solid #eadfce;
+    border-radius: 16px;
+    padding: 16px 18px;
+    margin: 0 auto 30px;
+    max-width: 420px;
+    display: grid;
+    gap: 6px;
+  }
+
+  .koko-booking-label {
+    color: #7b6a58;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .koko-booking-value {
+    color: #2f241c;
+    font-size: 22px;
+    font-weight: 900;
+    word-break: break-word;
+  }
+
+  .koko-invite-panel {
+    border-top: 1px solid #eadfce;
+    padding-top: 30px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 260px;
+    gap: 32px;
+    align-items: center;
+    text-align: left;
+  }
+
+  .koko-invite-badge {
+    padding: 7px 14px;
+    background: #F5D949;
+    border: 1px solid #221D16;
+    color: #221D16;
+    margin-bottom: 14px;
+  }
+
+  .koko-invite-title {
+    margin: 0 0 10px;
+    color: #2f241c;
+    font-size: 28px;
+    line-height: 1.15;
+    font-weight: 900;
+    letter-spacing: 0;
+  }
+
+  .koko-invite-copy {
+    margin: 0 0 20px;
+    color: #7b6a58;
+    font-size: 15px;
+    line-height: 1.55;
+    max-width: 430px;
+  }
+
+  .koko-invite-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .koko-invite-btn,
+  .koko-success-back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 48px;
+    padding: 0 20px;
+    border-radius: 12px;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 900;
+    line-height: 1;
+    box-sizing: border-box;
+    cursor: pointer;
+  }
+
+  .koko-invite-btn-primary,
+  .koko-success-back {
+    background: #F5D949;
+    color: #221D16;
+    border: 2px solid #221D16;
+    box-shadow: 3px 3px 0 #221D16;
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+
+  .koko-invite-btn-primary:hover,
+  .koko-success-back:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0 #221D16;
+  }
+
+  .koko-invite-btn-secondary {
+    background: #FFFDF9;
+    color: #221D16;
+    border: 2px solid #221D16;
+  }
+
+  .koko-invite-tip {
+    margin: 0;
+    color: #9a8b7c;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .koko-invite-preview {
+    width: 100%;
+    max-width: 260px;
+    border-radius: 14px;
+    border: 1px solid #eadfce;
+    display: block;
+    justify-self: end;
+  }
+
+  .koko-success-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    margin-top: 28px;
+    text-align: left;
+  }
+
+  .koko-success-note {
+    margin: 0;
+    color: #9a8b7c;
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+
+  @media (max-width: 720px) {
+    .koko-success-page {
+      padding: 32px 14px;
+      align-items: flex-start;
+    }
+
+    .koko-success-card {
+      padding: 30px 18px;
+      border-radius: 20px;
+    }
+
+    .koko-success-title {
+      font-size: 32px;
+    }
+
+    .koko-success-copy {
+      font-size: 15px;
+    }
+
+    .koko-invite-panel {
+      grid-template-columns: 1fr;
+      gap: 22px;
+      text-align: center;
+    }
+
+    .koko-invite-copy {
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .koko-invite-actions {
+      justify-content: center;
+    }
+
+    .koko-invite-preview {
+      max-width: 280px;
+      justify-self: center;
+      order: -1;
+    }
+
+    .koko-success-footer {
+      flex-direction: column-reverse;
+      text-align: center;
+    }
+  }
+
+  @media (max-width: 420px) {
+    .koko-invite-actions {
+      display: grid;
+      grid-template-columns: 1fr;
+    }
+
+    .koko-invite-btn,
+    .koko-success-back {
+      width: 100%;
+    }
+  }
+</style>
+
+<div class="koko-success-page">
+  <div class="koko-success-card">
+    <div class="koko-success-mark">&#10003;</div>
+    <div class="koko-success-badge">Payment successful</div>
+
+    <h1 class="koko-success-title">Thank you for your booking!</h1>
+    <p class="koko-success-copy">
+      Your payment has been received. We'll send your booking confirmation to your email shortly.
+    </p>
+
+    <div class="koko-booking-id">
+      <div class="koko-booking-label">Booking ID</div>
+      <div id="bookingSuccessId" class="koko-booking-value">-</div>
+    </div>
+
+    <div class="koko-invite-panel">
+      <div class="koko-invite-content">
+        <div class="koko-invite-badge">Your party invitation</div>
+        <h2 class="koko-invite-title">Invite your guests in style</h2>
+        <p class="koko-invite-copy">
+          Download the KOKO birthday invitation, print it, then fill in the location, date and time for your party.
+        </p>
+
+        <div class="koko-invite-actions">
+          <a
+            class="koko-invite-btn koko-invite-btn-primary"
+            href="https://cdn.jsdelivr.net/gh/MarketingMorefun/koko-booking@ec8c576/koko-birthday-invitation.png"
+            data-koko-dl="KOKO Birthday Invitation.png"
+          >
+            Download PNG
+          </a>
+          <a
+            class="koko-invite-btn koko-invite-btn-secondary"
+            href="https://cdn.jsdelivr.net/gh/MarketingMorefun/koko-booking@ec8c576/koko-birthday-invitation.pdf"
+            data-koko-dl="KOKO Birthday Invitation.pdf"
+          >
+            Printable PDF
+          </a>
+        </div>
+
+        <p class="koko-invite-tip">Tip: print at A4 for the best result.</p>
+      </div>
+
+      <img
+        class="koko-invite-preview"
+        src="https://cdn.jsdelivr.net/gh/MarketingMorefun/koko-booking@ec8c576/koko-birthday-invitation.png"
+        alt="KOKO birthday invitation preview"
+      >
+    </div>
+
+    <div class="koko-success-footer">
+      <p class="koko-success-note">If you have any questions, please contact us with your booking ID.</p>
+      <a class="koko-success-back" href="/booking/parties">Back to Parties</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var params = new URLSearchParams(window.location.search);
+    var bookingId = params.get("booking_id");
+    var bookingIdEl = document.getElementById("bookingSuccessId");
+
+    if (bookingIdEl) {
+      bookingIdEl.textContent = bookingId || "-";
+    }
+
+    document.querySelectorAll("[data-koko-dl]").forEach(function (link) {
+      link.addEventListener("click", function (event) {
+        event.preventDefault();
+
+        if (link.dataset.busy === "1") return;
+
+        var url = link.getAttribute("href");
+        var name = link.getAttribute("data-koko-dl");
+
+        link.dataset.busy = "1";
+        link.style.opacity = "0.72";
+
+        fetch(url)
+          .then(function (response) {
+            return response.blob();
+          })
+          .then(function (blob) {
+            var downloadLink = document.createElement("a");
+            downloadLink.href = URL.createObjectURL(blob);
+            downloadLink.download = name;
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            downloadLink.remove();
+
+            setTimeout(function () {
+              URL.revokeObjectURL(downloadLink.href);
+            }, 4000);
+          })
+          .catch(function () {
+            window.open(url, "_blank");
+          })
+          .finally(function () {
+            link.dataset.busy = "";
+            link.style.opacity = "1";
+          });
+      });
+    });
+  })();
+</script>

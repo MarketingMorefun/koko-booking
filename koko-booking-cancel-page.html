@@ -1,0 +1,164 @@
+<div
+  style="
+    min-height: 80vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 20px;
+    background: #faf6ee;
+    font-family: 'Maven Pro', sans-serif;
+  "
+>
+  <div
+    style="
+      width: 100%;
+      max-width: 760px;
+      background: #fffdf9;
+      border: 1px solid #E8DDCC;
+      border-radius: 28px;
+      padding: 48px 36px;
+      text-align: center;
+      box-shadow: 0 16px 40px rgba(47, 36, 28, 0.08);
+      box-sizing: border-box;
+    "
+  >
+    <div
+      style="
+        width: 72px;
+        height: 72px;
+        border-radius: 999px;
+        background: #FFF3DF;
+        color: #F28C28;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 38px;
+        font-weight: 900;
+        margin: 0 auto 24px;
+      "
+    >
+      !
+    </div>
+
+    <div
+      style="
+        display: inline-flex;
+        padding: 8px 16px;
+        border-radius: 999px;
+        background: #FFF3DF;
+        color: #B86816;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 20px;
+      "
+    >
+      Payment Not Completed
+    </div>
+
+    <h1
+      style="
+        margin: 0 0 16px;
+        color: #2F241C;
+        font-size: 44px;
+        line-height: 1.05;
+        font-weight: 900;
+      "
+    >
+      Your booking is not confirmed yet
+    </h1>
+
+    <p
+      style="
+        margin: 0 auto 28px;
+        color: #7b6a58;
+        font-size: 18px;
+        line-height: 1.6;
+        max-width: 560px;
+      "
+    >
+      Your payment was cancelled or not completed. You can return to the booking page and try again.
+    </p>
+
+    <div
+      style="
+        background: #faf6ee;
+        border: 1px solid #E8DDCC;
+        border-radius: 18px;
+        padding: 18px 20px;
+        margin: 0 auto 28px;
+        max-width: 420px;
+        display: grid;
+        gap: 8px;
+      "
+    >
+      <div
+        style="
+          color: #7b6a58;
+          font-size: 13px;
+          font-weight: 800;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+        "
+      >
+        Booking ID
+      </div>
+
+      <div
+        id="bookingCancelId"
+        style="
+          color: #2F241C;
+          font-size: 24px;
+          font-weight: 900;
+        "
+      >
+        -
+      </div>
+    </div>
+
+    <a
+      href="/booking/parties"
+      style="
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 52px;
+        padding: 0 28px;
+        border-radius: 14px;
+        background: #F5D949;
+        border: 2px solid #221D16;
+        box-shadow: 4px 4px 0 #221D16;
+        color: #221D16;
+        text-decoration: none;
+        font-size: 15px;
+        font-weight: 800;
+      "
+    >
+      Back to Booking
+    </a>
+
+    <p
+      style="
+        margin: 22px 0 0;
+        color: #9A8B7C;
+        font-size: 13px;
+        line-height: 1.5;
+      "
+    >
+      If you need help, please contact us with your booking ID.
+    </p>
+  </div>
+</div>
+
+<script>
+(function () {
+  const params = new URLSearchParams(window.location.search);
+  const bookingId = params.get("booking_id");
+
+  const bookingIdEl = document.getElementById("bookingCancelId");
+  if (bookingIdEl) {
+    bookingIdEl.textContent = bookingId || "-";
+  }
+})();
+</script>
