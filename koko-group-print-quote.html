@@ -11,6 +11,11 @@
 .koko-print-head{font-family:Arial,Helvetica,sans-serif;color:#2F241C}
 .koko-print-head strong{font-size:18px;display:block;margin-bottom:6px}
 .koko-print-head span{font-size:12px;color:#7B6A58}
+.koko-print-includes{margin:4px 0 14px;padding:12px 14px;border:1px solid #E8DDCC;border-radius:12px;background:#FAF6EE;font-family:Arial,Helvetica,sans-serif}
+.koko-print-includes-title{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#B86816;margin-bottom:6px}
+.koko-print-includes-list{margin:0;padding:0;list-style:none;display:grid;gap:3px}
+.koko-print-includes-list li{font-size:13px;color:#2F241C;padding-left:14px;position:relative}
+.koko-print-includes-list li:before{content:"✦";position:absolute;left:0;color:#B86816;font-size:11px}
 @media print{
   /* Remove every top-level element from layout — this is what actually stops
      the blank pages, since visibility:hidden alone still reserves space. */
@@ -30,6 +35,43 @@
 </style>
 <script>
 (function(){
+  var PACKAGE_INCLUDES={
+    "koko team fun 60":["60 mins Game Play","5x Claw & Prize Games","3x Feature Game","500 KOKO Tickets"],
+    "koko team fun 100":["100 mins Game Play","10x Claw & Prize Games","3x Feature Game","1000 KOKO Tickets"],
+    "koko team max 100":["100 mins Game Play","10x Claw & Prize Games","3x Feature Game","1000 KOKO Tickets"],
+    "haymarket classic":["1 Archery Game","1 Bowling Game","1 Hour Pool Game"],
+    "haymarket package a":["1 Archery Game","1 Bowling Game","1 Hour Pool Game"],
+    "haymarket plus":["1 Archery Game","1 Bowling Game","1 Hour Pool Game","$30 KOKO Card"],
+    "haymarket package b":["1 Archery Game","1 Bowling Game","1 Hour Pool Game","$30 KOKO Card"],
+    "haymarket value":["1 Archery Game","1 Bowling Game","$30 KOKO Card"],
+    "haymarket package c":["1 Archery Game","1 Bowling Game","$30 KOKO Card"],
+    "haymarket double play":["2 Archery Game","2 Bowling Game","$30 KOKO Card"],
+    "haymarket package d":["2 Archery Game","2 Bowling Game","$30 KOKO Card"]
+  };
+  function insertIncludes(clone){
+    var pkgEl=clone.querySelector("#groupReviewPackage");
+    if(!pkgEl)return;
+    var key=(pkgEl.textContent||"").trim().toLowerCase();
+    var items=PACKAGE_INCLUDES[key];
+    if(!items||!items.length)return;
+    var row=pkgEl.parentElement||pkgEl;
+    if(!row.parentElement)return;
+    var box=document.createElement("div");
+    box.className="koko-print-includes";
+    var title=document.createElement("div");
+    title.className="koko-print-includes-title";
+    title.textContent="What's included";
+    box.appendChild(title);
+    var ul=document.createElement("ul");
+    ul.className="koko-print-includes-list";
+    for(var i=0;i<items.length;i++){
+      var li=document.createElement("li");
+      li.textContent=items[i];
+      ul.appendChild(li);
+    }
+    box.appendChild(ul);
+    row.parentElement.insertBefore(box,row);
+  }
   function stripIds(el){
     if(!el||el.nodeType!==1)return;
     if(el.id)el.removeAttribute("id");
@@ -55,6 +97,7 @@
     root.appendChild(head);
     if(sec){
       var clone=sec.cloneNode(true);
+      insertIncludes(clone);
       stripIds(clone);
       clone.removeAttribute("style");
       var junk=clone.querySelectorAll(".koko-print-quote-wrap");
