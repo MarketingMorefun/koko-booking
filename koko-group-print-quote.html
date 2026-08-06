@@ -1,0 +1,47 @@
+<!-- KOKO Group Booking: "Save this quote as a PDF" button -->
+<!-- Paste this into Webflow: /booking/group page settings → Custom code → Footer,
+     BELOW the existing <script src="...koko-group-booking.js"> line. Do not remove that line. -->
+<style>
+.koko-print-quote{display:inline-flex;align-items:center;gap:8px;margin-top:18px;padding:13px 20px;border:2px solid #221d16;border-radius:16px;background:#fffaf0;box-shadow:4px 4px 0 #221d16;font-weight:700;font-size:14px;color:#221d16;cursor:pointer;transition:all 140ms ease}
+.koko-print-quote:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 #221d16}
+.koko-print-quote:active{transform:translate(0,0);box-shadow:2px 2px 0 #221d16}
+.koko-print-hint{margin-top:8px;font-size:13px;color:#8a7d6a}
+.koko-print-head{display:none}
+@media print{
+  body *{visibility:hidden !important}
+  #groupReviewSection,#groupReviewSection *{visibility:visible !important}
+  #groupReviewSection{position:absolute !important;left:0 !important;top:0 !important;width:100% !important;box-shadow:none !important;border:0 !important}
+  .koko-print-quote,.koko-print-hint{display:none !important}
+  .koko-print-head{visibility:visible !important;display:block !important;margin-bottom:16px}
+  @page{margin:16mm}
+}
+</style>
+<script>
+(function(){
+  function build(){
+    var sec=document.getElementById("groupReviewSection");
+    if(!sec||sec.getAttribute("data-print-ready"))return;
+    sec.setAttribute("data-print-ready","1");
+    var head=document.createElement("div");
+    head.className="koko-print-head";
+    head.innerHTML='<strong>KOKO Amusement — Group Booking Quote</strong><br>Generated '+new Date().toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"})+'<br>Enquiries: marketing@morefun.com.au';
+    sec.insertBefore(head,sec.firstChild);
+    var wrap=document.createElement("div");
+    var btn=document.createElement("button");
+    btn.type="button";
+    btn.className="koko-print-quote";
+    btn.textContent="↓  Save this quote as a PDF";
+    btn.addEventListener("click",function(){window.print()});
+    var hint=document.createElement("div");
+    hint.className="koko-print-hint";
+    hint.textContent="Choose “Save as PDF” in the print dialog to send it to your manager for approval.";
+    wrap.appendChild(btn);wrap.appendChild(hint);sec.appendChild(wrap);
+  }
+  function watch(){
+    var sec=document.getElementById("groupReviewSection");
+    if(sec&&sec.offsetParent!==null)build();
+  }
+  if(document.readyState!=="loading"){watch()}else{document.addEventListener("DOMContentLoaded",watch)}
+  new MutationObserver(watch).observe(document.documentElement,{attributes:true,childList:true,subtree:true,attributeFilter:["style","class"]});
+})();
+</script>
