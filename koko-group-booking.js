@@ -232,7 +232,7 @@ function packageListByLocation(){
   }
   return [
     {id:2,package_id:2,name:"KOKO Team Fun 60",package_name:"KOKO Team Fun 60",slug:"koko-team-fun-60",package_slug:"koko-team-fun-60"},
-    {id:3,package_id:3,name:"KOKO Team Fun 100",package_name:"KOKO Team Fun 100",slug:"koko-team-max-100",package_slug:"koko-team-max-100"}
+    {id:3,package_id:3,name:"KOKO Team Max 100",package_name:"KOKO Team Max 100",slug:"koko-team-max-100",package_slug:"koko-team-max-100"}
   ];
 }
 
@@ -474,7 +474,7 @@ function packageCardIds(pkg){
 function packageButtonLabel(pkg){
   const slug=normText(packageSlug(pkg));
   if(slug==="koko team fun 60") return "Select KOKO Team Fun 60";
-  if(slug==="koko team max 100") return "Select KOKO Team Fun 100";
+  if(slug==="koko team max 100") return "Select KOKO Team Max 100";
   if(slug==="haymarket a") return "Select Haymarket Package A";
   if(slug==="haymarket b") return "Select Haymarket Package B";
   if(slug==="haymarket c") return "Select Haymarket Package C";
