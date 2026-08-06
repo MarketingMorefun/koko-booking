@@ -24,13 +24,14 @@
     display:block !important;
     position:static !important;
     width:100% !important;
-    max-width:680px !important;
+    max-width:760px !important;
     margin:0 auto !important;
     padding:0 !important;
+    zoom:0.78 !important;
   }
   #kokoPrintRoot *{visibility:visible !important;box-shadow:none !important}
   #kokoPrintRoot .koko-print-quote-wrap{display:none !important}
-  @page{margin:14mm;size:A4}
+  @page{margin:10mm;size:A4}
 }
 </style>
 <script>
@@ -53,8 +54,6 @@
     var key=(pkgEl.textContent||"").trim().toLowerCase();
     var items=PACKAGE_INCLUDES[key];
     if(!items||!items.length)return;
-    var row=pkgEl.parentElement||pkgEl;
-    if(!row.parentElement)return;
     var box=document.createElement("div");
     box.className="koko-print-includes";
     var title=document.createElement("div");
@@ -69,7 +68,27 @@
       ul.appendChild(li);
     }
     box.appendChild(ul);
-    row.parentElement.insertBefore(box,row);
+    /* Append INSIDE the existing value cell rather than inserting a new
+       sibling row — the review list relies on flat label/value pairing
+       (grid or repeated flex rows), and adding a sibling shifts every
+       row after it by one slot. */
+    pkgEl.appendChild(box);
+  }
+  function trimFlowChrome(clone){
+    var nodes=clone.querySelectorAll("*");
+    var toRemove=[];
+    for(var i=0;i<nodes.length;i++){
+      var node=nodes[i];
+      if(node.children&&node.children.length)continue;
+      var t=(node.textContent||"").trim();
+      var tl=t.toLowerCase();
+      if(/^step\s*\d+$/i.test(t)||tl==="deposit due"||tl.indexOf("almost done")!==-1||tl==="review your booking"){
+        toRemove.push(node);
+      }
+    }
+    for(var j=0;j<toRemove.length;j++){
+      if(toRemove[j].parentNode)toRemove[j].parentNode.removeChild(toRemove[j]);
+    }
   }
   function stripIds(el){
     if(!el||el.nodeType!==1)return;
@@ -96,6 +115,7 @@
     root.appendChild(head);
     if(sec){
       var clone=sec.cloneNode(true);
+      trimFlowChrome(clone);
       insertIncludes(clone);
       stripIds(clone);
       clone.removeAttribute("style");
