@@ -801,7 +801,12 @@ show("addonsSection",false);
 msg("Failed to load add-ons.",true);
 }
 }
+let _quoteInFlight=false;
+let _quoteQueued=null;
 async function getQuote(type,load){
+if(_quoteInFlight){_quoteQueued={type,load};return;}
+_quoteInFlight=true;
+try{
 if(!window.bookingState.location_slug||!window.bookingState.guests)return msg("Please select location and guests first.",true);
 if(!window.bookingState.party_room_id||!window.bookingState.start_ts||!window.bookingState.end_ts)return msg("Please select a room and slot first.",true);
 if(type==="joy")window.bookingState.package_id=PACKAGE_IDS.joy;
@@ -812,7 +817,6 @@ if(!activePackageIds().includes(window.bookingState.package_id)){
 updatePackageVisibility();
 return msg(`${packageName(window.bookingState.package_id)} is not available for this location and party size.`,true);
 }
-try{
 msg("Loading quote...");
 const r=await fetch(`${BASE_URL}/Quote`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload:{location_slug:window.bookingState.location_slug,package_id:window.bookingState.package_id,guests:window.bookingState.guests,addons:quoteAddons()}})});
 const text=await r.text();
@@ -833,6 +837,13 @@ show("contactSection",false);
 msg(`Package selected: ${packageName(window.bookingState.package_id)}`);
 }catch(e){
 msg("Failed to load quote.",true);
+}finally{
+_quoteInFlight=false;
+if(_quoteQueued){
+const q=_quoteQueued;
+_quoteQueued=null;
+getQuote(q.type,q.load);
+}
 }
 }
 function validateContact(){
