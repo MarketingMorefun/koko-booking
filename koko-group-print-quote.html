@@ -27,7 +27,6 @@
     max-width:760px !important;
     margin:0 auto !important;
     padding:0 !important;
-    zoom:0.78 !important;
   }
   #kokoPrintRoot *{visibility:visible !important;box-shadow:none !important;font-family:'Poppins',Arial,sans-serif !important}
   #kokoPrintRoot .koko-print-quote-wrap{display:none !important}
@@ -143,7 +142,15 @@
       for(var i=0;i<junk.length;i++)junk[i].parentNode.removeChild(junk[i]);
       root.appendChild(clone);
     }
-    window.print();
+    /* Safari can snapshot the page for printing before it has finished
+       laying out content we just inserted, producing a blank PDF.
+       Two animation-frame ticks (plus a short timeout fallback) force a
+       real layout/paint pass to complete first. */
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        window.print();
+      });
+    });
   }
   function build(){
     var sec=document.getElementById("groupReviewSection");
