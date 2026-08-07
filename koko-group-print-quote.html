@@ -16,6 +16,8 @@
 .koko-print-includes-list{margin:0;padding:0;list-style:none;display:grid;gap:3px}
 .koko-print-includes-list li{font-size:13px;color:#2F241C;padding-left:14px;position:relative}
 .koko-print-includes-list li:before{content:"✦";position:absolute;left:0;color:#221D16;font-size:11px}
+.koko-print-custom-note{margin-top:16px;padding-top:14px;border-top:1px solid #E8DDCC;font-family:'Poppins',Arial,sans-serif;font-size:12.5px;color:#7B6A58;line-height:1.5;text-align:center}
+.koko-print-custom-note strong{color:#2F241C}
 @media print{
   /* Remove every top-level element from layout — this is what actually stops
      the blank pages, since visibility:hidden alone still reserves space. */
@@ -142,6 +144,10 @@
       for(var i=0;i<junk.length;i++)junk[i].parentNode.removeChild(junk[i]);
       root.appendChild(clone);
     }
+    var note=document.createElement("p");
+    note.className="koko-print-custom-note";
+    note.innerHTML="Need something custom or a personalised touch? Contact <strong>marketing@morefun.com.au</strong> and we'll help you plan it.";
+    root.appendChild(note);
     /* Safari can snapshot the page for printing before it has finished
        laying out content we just inserted, producing a blank PDF.
        Two animation-frame ticks (plus a short timeout fallback) force a
