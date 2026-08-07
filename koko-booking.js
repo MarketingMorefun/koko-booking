@@ -535,8 +535,8 @@ msg(e.message||"Failed to load availability.",true);
 function packageUI(type){
 const jc=packageCard("joy"),fc=packageCard("fun"),mc=packageCard("max"),jb=ensurePackageButton("joy",jc),fb=ensurePackageButton("fun",fc),mb=ensurePackageButton("max",mc);
 function setBtn(b,t,selected){if(!b)return;b.style.display="block";if(b.tagName==="INPUT")b.value=t;else b.textContent=t;b.style.background=selected?"#EFC838":"#F5D949";b.style.color="#221D16";b.style.border="2px solid #221D16";b.style.boxShadow=selected?"none":"3px 3px 0 #221D16";b.style.cursor=selected?"default":"pointer";b.style.opacity="1"}
-function sel(c,b){if(c){c.style.background="#F7F0DB";c.style.border="1px solid #F2B300"}setBtn(b,"Selected",true)}
-function def(c,b,t){if(c){c.style.background="#FBF8F2";c.style.border="1px solid #E8DDCC"}setBtn(b,t,false)}
+function sel(c,b){setBtn(b,"Selected",true)}
+function def(c,b,t){setBtn(b,t,false)}
 if(type==="joy"){sel(jc,jb);def(fc,fb,"Select Fun");def(mc,mb,"Select Max")}
 if(type==="fun"){sel(fc,fb);def(jc,jb,"Select Joy");def(mc,mb,"Select Max")}
 if(type==="max"){sel(mc,mb);def(jc,jb,"Select Joy");def(fc,fb,"Select Fun")}
