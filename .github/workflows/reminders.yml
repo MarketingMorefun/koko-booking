@@ -1,0 +1,19 @@
+$ cat "/Users/zimowang/workspace/Claude koko website/.github/workflows/reminders.yml"
+
+name: Booking reminders
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # every hour, on the hour
+  workflow_dispatch:        # lets you trigger it manually from the Actions tab
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Xano RunReminders
+        run: |
+          curl -sS -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"secret\":\"${{ secrets.REMINDER_SECRET }}\"}" \
+            https://x8ki-letl-twmt.n7.xano.io/api:KARDPSrJ/RunReminders
