@@ -198,17 +198,25 @@ query RunReminders verb=POST {
                 |push:"Content-Type: application/json"
             } as $SendResult1
 
-            db.patch bookings {
-              field_name = "id"
-              field_value = $booking.id
-              data = {
-                reminder_1_sent       : true
-                reminder_last_sent_at : $now_ts
-              }
-            } as $UpdatedBooking1
+            // Only mark as sent if Resend actually accepted the email.
+            // Without this check, a bad key / unverified domain / malformed
+            // request would still flip reminder_1_sent to true, and that
+            // booking would silently never be retried.
+            conditional {
+              if ($SendResult1.response.status >= 200 && $SendResult1.response.status < 300) {
+                db.patch bookings {
+                  field_name = "id"
+                  field_value = $booking.id
+                  data = {
+                    reminder_1_sent       : true
+                    reminder_last_sent_at : $now_ts
+                  }
+                } as $UpdatedBooking1
 
-            var $reminder_1_sent_count {
-              value = $reminder_1_sent_count + 1
+                var $reminder_1_sent_count {
+                  value = $reminder_1_sent_count + 1
+                }
+              }
             }
           }
         }
@@ -360,17 +368,21 @@ query RunReminders verb=POST {
                 |push:"Content-Type: application/json"
             } as $SendResult2
 
-            db.patch bookings {
-              field_name = "id"
-              field_value = $booking2.id
-              data = {
-                reminder_2_sent       : true
-                reminder_last_sent_at : $now_ts
-              }
-            } as $UpdatedBooking2
+            conditional {
+              if ($SendResult2.response.status >= 200 && $SendResult2.response.status < 300) {
+                db.patch bookings {
+                  field_name = "id"
+                  field_value = $booking2.id
+                  data = {
+                    reminder_2_sent       : true
+                    reminder_last_sent_at : $now_ts
+                  }
+                } as $UpdatedBooking2
 
-            var $reminder_2_sent_count {
-              value = $reminder_2_sent_count + 1
+                var $reminder_2_sent_count {
+                  value = $reminder_2_sent_count + 1
+                }
+              }
             }
           }
         }
