@@ -1,0 +1,49 @@
+<!-- KOKO /booking/resume — abandoned-cart resume page -->
+<!-- Page settings → Custom code → Head: -->
+<!--
+<meta name="robots" content="noindex, nofollow">
+-->
+<!-- Page settings → Custom code → Footer (this file): -->
+<script>
+(function () {
+  var BASE = 'https://x8ki-letl-twmt.n7.xano.io/api:KARDPSrJ';
+  function show(msg) {
+    var l = document.getElementById('resumeLoading');
+    var e = document.getElementById('resumeError');
+    var m = document.getElementById('resumeErrorMsg');
+    if (l) l.style.display = 'none';
+    if (e) e.style.display = 'block';
+    if (m) m.textContent = msg;
+  }
+  var qs   = new URLSearchParams(location.search);
+  var id   = qs.get('booking_id');
+  var type = qs.get('type') || 'group';
+  if (!id) {
+    show('We couldn’t find that booking. Please start a new one.');
+    return;
+  }
+  // type=party -> birthday booking (booking_type "birthday_party") -> ConfirmBooking
+  // type=group -> group booking (booking_type "group_booking")     -> ConfirmGroupBooking
+  var endpoint = (type === 'party') ? '/ConfirmBooking' : '/ConfirmGroupBooking';
+  fetch(BASE + endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payload: { booking_id: Number(id) } })
+  })
+  .then(function (r) { return r.text(); })
+  .then(function (t) {
+    var d = t.trim() ? JSON.parse(t) : null;
+    if (!d || d.error_message) {
+      show(d && d.error_message ? d.error_message
+           : 'This booking can no longer be paid for. It may have expired or already been confirmed.');
+      return;
+    }
+    var url = d.payment_url || d.checkout_url || d.url || d.stripe_url;
+    if (url) { location.replace(url); return; }
+    show('We couldn’t start the payment. Please contact marketing@morefun.com.au.');
+  })
+  .catch(function () {
+    show('Something went wrong. Please contact marketing@morefun.com.au.');
+  });
+})();
+</script>
