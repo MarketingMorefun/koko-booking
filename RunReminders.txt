@@ -47,7 +47,7 @@ query RunReminders verb=POST {
         // REMINDER 1 — sent 1h to 24h after the hold was created
         // ============================================================
         db.query bookings {
-          where = $db.bookings.status == "hold" && $db.bookings.reminder_1_sent == false && $db.bookings.customer_email != "" && $db.bookings.created_at < $one_hour_ago && $db.bookings.created_at > $twentyfour_hours_ago
+          where = ($db.bookings.status == "hold" || $db.bookings.status == "pending_payment") && $db.bookings.reminder_1_sent == false && $db.bookings.customer_email != "" && $db.bookings.created_at < $one_hour_ago && $db.bookings.created_at > $twentyfour_hours_ago
           return = {type: "list"}
         } as $Reminder1Bookings
 
@@ -225,7 +225,7 @@ query RunReminders verb=POST {
         // REMINDER 2 — sent 20h to 24h after the hold was created
         // ============================================================
         db.query bookings {
-          where = $db.bookings.status == "hold" && $db.bookings.reminder_2_sent == false && $db.bookings.customer_email != "" && $db.bookings.created_at < $twenty_hours_ago && $db.bookings.created_at > $twentyfour_hours_ago
+          where = ($db.bookings.status == "hold" || $db.bookings.status == "pending_payment") && $db.bookings.reminder_2_sent == false && $db.bookings.customer_email != "" && $db.bookings.created_at < $twenty_hours_ago && $db.bookings.created_at > $twentyfour_hours_ago
           return = {type: "list"}
         } as $Reminder2Bookings
 

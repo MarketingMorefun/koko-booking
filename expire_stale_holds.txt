@@ -13,7 +13,14 @@ function expire_stale_holds {
 
     // Only give up on a hold after 24 hours — this must stay aligned with
     // the abandoned-cart reminder emails (sent at 1h and 20h), which rely
-    // on the booking still reading status "hold" all the way up to 24h.
+    // on the booking still reading status "hold"/"pending_payment" all the
+    // way up to 24h.
+    //
+    // Also sweeps "pending_payment" bookings: a customer only needs to
+    // click "Pay" once (not actually finish on Stripe's page) for status
+    // to move to pending_payment, so plenty of abandoned carts end up
+    // there rather than staying "hold". Without including it here, those
+    // records would sit forever and never get cleaned up.
     //
     // hold_expires_at_ts (15 min) is deliberately NOT used here anymore.
     // That field only controls how long this booking blocks the exact
@@ -22,7 +29,7 @@ function expire_stale_holds {
     // was flipping bookings to "expired" within 15 minutes of anyone else
     // starting a new booking, which silently broke the reminder emails.
     db.query bookings {
-      where = $db.bookings.status == "hold" && $db.bookings.created_at < $twentyfour_hours_ago
+      where = ($db.bookings.status == "hold" || $db.bookings.status == "pending_payment") && $db.bookings.created_at < $twentyfour_hours_ago
       return = {type: "list"}
     } as $stale_holds
 

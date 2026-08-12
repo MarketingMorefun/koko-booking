@@ -121,8 +121,14 @@ query ConfirmGroupBooking verb=POST {
           }
         }
 
+        // Always mint a fresh Stripe session rather than reusing a stored
+        // payment_url. A "pending_payment" booking only means the customer
+        // clicked Pay once — if they abandoned at Stripe's own page and
+        // come back hours later (e.g. via a reminder email), that old
+        // Checkout Session has likely expired on Stripe's side already.
+        // Reusing it would send them to a broken/expired Stripe page.
         conditional {
-          if ($Booking.status == "pending_payment" && $Booking.payment_url != null && $Booking.payment_url != "") {
+          if (false) {
             var $payment_url {
               value = $Booking.payment_url
             }
