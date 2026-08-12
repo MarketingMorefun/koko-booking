@@ -187,7 +187,7 @@ query RunReminders verb=POST {
               url = "https://api.resend.com/emails"
               method = "POST"
               params = {
-                from   : "KOKO Amusement <bookings@morefun.com.au>"
+                from   : "KOKO Amusement <booking@mail.morefun.com.au>"
                 to     : $booking.customer_email
                 subject: $email_subject_1
                 html   : $email_html_1
@@ -357,7 +357,7 @@ query RunReminders verb=POST {
               url = "https://api.resend.com/emails"
               method = "POST"
               params = {
-                from   : "KOKO Amusement <bookings@morefun.com.au>"
+                from   : "KOKO Amusement <booking@mail.morefun.com.au>"
                 to     : $booking2.customer_email
                 subject: "Last chance — your KOKO spot is released in 4 hours"
                 html   : $email_html_2
