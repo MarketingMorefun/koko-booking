@@ -1,0 +1,466 @@
+query CreateGroupBooking verb=POST {
+  api_group = "KOKO Booking"
+
+  input {
+    object payload {
+      schema {
+        text location_slug
+        text date
+        int guests
+        int package_id
+        int start_ts
+        int end_ts
+
+        // 建议把这里从 `json addons` 改成 `object[] addons?`,与 GroupQuote 统一,
+        // 防止有人按单个对象传进来导致循环跑不起来。改成数组后下面逻辑无需变动。
+        json addons
+
+        text customer_name
+        text customer_phone
+        text customer_email
+        text booking_notes?
+      }
+    }
+  }
+
+  stack {
+    // 顺手清理过期 hold,保持订单表干净(跟 CreateBooking 保持一致)
+    function.run expire_stale_holds as $expired_result
+
+    var $error_message {
+      value = null
+    }
+
+    var $Location {
+      value = null
+    }
+
+    var $Package {
+      value = null
+    }
+
+    var $PackagePrice {
+      value = null
+    }
+
+    var $PackageRules {
+      value = null
+    }
+
+    var $Booking {
+      value = null
+    }
+
+    var $addons_json {
+      value = []
+    }
+
+    var $addons_total_cents {
+      value = 0
+    }
+
+    var $package_total_cents {
+      value = 0
+    }
+
+    var $grand_total_cents {
+      value = 0
+    }
+
+    var $balance_due_cents {
+      value = 0
+    }
+
+    var $now_ts {
+      value = `"now"|to_timestamp:"Australia/Sydney"`
+    }
+
+    var $hold_expires_at_ts {
+      value = $now_ts + 900000
+    }
+
+    // ============================================================
+    // 1) 入参校验(未改动)
+    // ============================================================
+    conditional {
+      if ($input.payload.location_slug == null || $input.payload.location_slug == "") {
+        var $error_message {
+          value = "Missing location"
+        }
+      }
+
+      elseif ($input.payload.date == null || $input.payload.date == "") {
+        var $error_message {
+          value = "Missing date"
+        }
+      }
+
+      elseif ($input.payload.guests == null || $input.payload.guests < 10) {
+        var $error_message {
+          value = "Group bookings require a minimum of 10 guests"
+        }
+      }
+
+      elseif ($input.payload.package_id == null || $input.payload.package_id <= 0) {
+        var $error_message {
+          value = "Missing package"
+        }
+      }
+
+      elseif ($input.payload.start_ts == null || $input.payload.start_ts <= 0) {
+        var $error_message {
+          value = "Missing start time"
+        }
+      }
+
+      elseif ($input.payload.end_ts == null || $input.payload.end_ts <= 0) {
+        var $error_message {
+          value = "Missing end time"
+        }
+      }
+
+      elseif ($input.payload.customer_name == null || $input.payload.customer_name == "") {
+        var $error_message {
+          value = "Missing customer name"
+        }
+      }
+
+      elseif ($input.payload.customer_email == null || $input.payload.customer_email == "") {
+        var $error_message {
+          value = "Missing customer email"
+        }
+      }
+
+      elseif ($input.payload.customer_phone == null || $input.payload.customer_phone == "") {
+        var $error_message {
+          value = "Missing customer phone"
+        }
+      }
+    }
+
+    // ============================================================
+    // 2) 解析门店(未改动)
+    // ============================================================
+    conditional {
+      if ($error_message == null) {
+        db.get Locations {
+          field_name = "slug"
+          field_value = $input.payload.location_slug
+        } as $Location
+      }
+    }
+
+    conditional {
+      if ($error_message == null && $Location == null) {
+        db.get Locations {
+          field_name = "Name"
+          field_value = $input.payload.location_slug
+        } as $Location
+      }
+    }
+
+    conditional {
+      if ($error_message == null && $Location == null) {
+        var $error_message {
+          value = "Location not found"
+        }
+      }
+
+      elseif ($error_message == null && $Location.is_active != true) {
+        var $error_message {
+          value = "Location is inactive"
+        }
+      }
+    }
+
+    // ============================================================
+    // 3) 解析套餐(未改动)
+    // ============================================================
+    conditional {
+      if ($error_message == null) {
+        db.get Packages {
+          field_name = "id"
+          field_value = $input.payload.package_id
+        } as $Package
+      }
+    }
+
+    conditional {
+      if ($error_message == null && $Package == null) {
+        var $error_message {
+          value = "Package not found"
+        }
+      }
+
+      elseif ($error_message == null && $Package.is_active != true) {
+        var $error_message {
+          value = "Package is inactive"
+        }
+      }
+
+      elseif ($error_message == null && $Package.Category != "group_booking") {
+        var $error_message {
+          value = "Selected package is not valid for group booking"
+        }
+      }
+    }
+
+    // ============================================================
+    // 4) 套餐门店价(未改动)
+    // ============================================================
+    conditional {
+      if ($error_message == null) {
+        db.query package_location_price {
+          where = $db.package_location_price.location_id == $Location.id && $db.package_location_price.package_id == $Package.id && $db.package_location_price.is_active == true
+          return = {type: "single"}
+        } as $PackagePrice
+      }
+    }
+
+    conditional {
+      if ($error_message == null && $PackagePrice == null) {
+        var $error_message {
+          value = "Package price not found for this location"
+        }
+      }
+    }
+
+    // ============================================================
+    // 5) 套餐规则 + 人数上下限(未改动)
+    // ============================================================
+    conditional {
+      if ($error_message == null) {
+        db.query package_location_rules {
+          where = $db.package_location_rules.location_id == $Location.id && $db.package_location_rules.package_id == $Package.id && $db.package_location_rules.is_active == true
+          return = {type: "single"}
+        } as $PackageRules
+      }
+    }
+
+    conditional {
+      if ($error_message == null && $PackageRules == null) {
+        var $error_message {
+          value = "Package rules not found for this location"
+        }
+      }
+
+      elseif ($error_message == null && $PackageRules.min_guests != null && $input.payload.guests < $PackageRules.min_guests) {
+        var $error_message {
+          value = "Guest count is below this package minimum"
+        }
+      }
+
+      elseif ($error_message == null && $PackageRules.max_guests != null && $input.payload.guests > $PackageRules.max_guests) {
+        var $error_message {
+          value = "Guest count is above this package maximum"
+        }
+      }
+    }
+
+    // ============================================================
+    // 6) 套餐总价(未改动)= 每人价 × 人数
+    // ============================================================
+    conditional {
+      if ($error_message == null) {
+        var $package_total_cents {
+          value = $PackagePrice.price_pp_cents * $input.payload.guests
+        }
+      }
+    }
+
+    // ============================================================
+    // 7) 附加项计价
+    // ============================================================
+    conditional {
+      if ($error_message == null) {
+        var $guests_int {
+          value = `$input.payload.guests|first_notnull:0|to_int`
+        }
+
+        var $req_addons {
+          value = $input.payload.addons|first_notnull:[]
+        }
+
+        db.query location_addons {
+          where = $db.location_addons.location_id == $Location.id && $db.location_addons.is_active == true
+          return = {type: "list"}
+        } as $loc_addon_list
+
+        array.map ($req_addons) {
+          by = {
+            addon_id    : `$this.addon_id|first_notnull:0|to_int`
+            qty         : `$this.qty|first_notnull:1|to_int`
+            option      : `$this|get:"option":null`
+            option_label: `$this|get:"option_label":null`
+            allergy_note: `$this|get:"allergy_note":null`
+          }
+        } as $addon_lines
+
+        array.map ($addon_lines) {
+          by = $this.addon_id
+        } as $addon_ids_int
+
+        db.query Addons {
+          where = $db.Addons.id in $addon_ids_int && $db.Addons.is_active == true
+          return = {type: "list"}
+        } as $addon_defs
+
+        var $addons_json {
+          value = []
+        }
+
+        foreach ($addon_lines) {
+          each as $item {
+            array.filter ($loc_addon_list) if ($this.addon_id == $item.addon_id) as $m_loc_list
+            array.find ($m_loc_list) if ($this.id > 0) as $matched_loc_addon
+            array.filter ($addon_defs) if ($this.id == $item.addon_id) as $m_def_list
+            array.find ($m_def_list) if ($this.id > 0) as $matched_addon_def
+            conditional {
+              if ($matched_loc_addon == null || $matched_addon_def == null) {
+                var $error_message {
+                  value = "Invalid addon for this location"
+                }
+              }
+            }
+
+            conditional {
+              if ($error_message == null) {
+                var $unit_type {
+                  value = `$matched_addon_def.unit_type|first_notnull:"per_item"`
+                }
+
+                var $qty_num {
+                  value = `$item.qty|first_notnull:1|to_int`
+                }
+
+                conditional {
+                  if ($qty_num < 1) {
+                    var $qty_num {
+                      value = 1
+                    }
+                  }
+                }
+
+                var $price_num {
+                  value = `$matched_loc_addon.default_price_cents|first_notnull:0|to_int`
+                }
+
+                conditional {
+                  if ($price_num == 0 && $matched_loc_addon.price != null) {
+                    var $price_num {
+                      value = ($matched_loc_addon.price|multiply:100)|round:0
+                    }
+                  }
+                }
+
+                conditional {
+                  if ($unit_type == "per_person") {
+                    var $line_total_cents {
+                      value = $price_num|multiply:$guests_int
+                    }
+                  }
+
+                  else {
+                    var $line_total_cents {
+                      value = $price_num|multiply:$qty_num
+                    }
+                  }
+                }
+
+                var $addons_total_cents {
+                  value = `$addons_total_cents|add:$line_total_cents`
+                }
+
+                array.push $addons_json {
+                  value = {
+                    addon_id        : $matched_addon_def.id
+                    addon_name      : $matched_addon_def.name
+                    qty             : $qty_num
+                    unit_type       : $unit_type
+                    unit_price_cents: $price_num
+                    line_total_cents: $line_total_cents
+                    option          : $item.option
+                    option_label    : $item.option_label
+                    allergy_note    : $item.allergy_note
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // ============================================================
+    // 8) 合计
+    // ============================================================
+    conditional {
+      if ($error_message == null) {
+        var $grand_total_cents {
+          value = $package_total_cents + $addons_total_cents
+        }
+
+        var $balance_due_cents {
+          value = $grand_total_cents
+        }
+      }
+    }
+
+    conditional {
+      if ($error_message == null && $grand_total_cents <= 0) {
+        var $error_message {
+          value = "Booking total is invalid"
+        }
+      }
+    }
+
+    // ============================================================
+    // 9) 建单
+    // ============================================================
+    conditional {
+      if ($error_message == null) {
+        db.add bookings {
+          enforce_hidden_fields = false
+          data = {
+            booking_type              : "group_booking"
+            status                    : "hold"
+            location_id               : $Location.id
+            package_id                : $Package.id
+            date                      : $input.payload.date
+            start_ts                  : $input.payload.start_ts
+            end_ts                    : $input.payload.end_ts
+            guests                    : $input.payload.guests
+            addons_json               : $addons_json
+            customer_name             : $input.payload.customer_name
+            customer_phone            : $input.payload.customer_phone
+            customer_email            : $input.payload.customer_email
+            booking_notes             : $input.payload.booking_notes
+            package_total_cents       : $package_total_cents
+            addons_total_cents        : $addons_total_cents
+            grand_total_cents         : $grand_total_cents
+            balance_due_cents         : $balance_due_cents
+            deposit_paid_cents        : 0
+            payment_url               : ""
+            stripe_session_id         : ""
+            paid_at                   : null
+            confirmation_email_sent_at: null
+            hold_expires_at_ts        : $hold_expires_at_ts
+          }
+        } as $Booking
+      }
+    }
+  }
+
+  response = {
+    error_message      : $error_message
+    booking            : $Booking
+    booking_id         : $Booking.id
+    package_total_cents: $package_total_cents
+    addons_total_cents : $addons_total_cents
+    grand_total_cents  : $grand_total_cents
+    location           : $Location
+    package            : $Package
+    package_price      : $PackagePrice
+    package_rules      : $PackageRules
+  }
+}
