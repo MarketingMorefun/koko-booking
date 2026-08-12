@@ -1,0 +1,347 @@
+query ConfirmBooking verb=POST {
+  api_group = "KOKO Booking"
+
+  input {
+    object payload {
+      schema {
+        int booking_id
+      }
+    }
+  }
+
+  stack {
+    var $error_message {
+      value = null
+    }
+
+    var $Booking {
+      value = null
+    }
+
+    var $StripeKey {
+      value = null
+    }
+
+    var $StripeSession {
+      value = null
+    }
+
+    var $stripe_session_id {
+      value = null
+    }
+
+    var $payment_url {
+      value = null
+    }
+
+    var $stripe_secret_key {
+      value = null
+    }
+
+    // =========================
+    // CHANGE THIS WHEN GOING LIVE
+    // test = use stripe_secret_key_test + webflow staging URL
+    // live = use stripe_secret_key_live + official domain
+    // =========================
+    var $stripe_mode {
+      value = "live"
+    }
+
+    var $success_url {
+      value = ""
+    }
+
+    var $cancel_url {
+      value = ""
+    }
+
+    var $deposit_cents {
+      value = 5000
+    }
+
+    var $surcharge_cents {
+      value = 150
+    }
+
+    var $remaining_balance_cents {
+      value = 0
+    }
+
+    var $now_ts {
+      value = `"now"|to_timestamp:"Australia/Sydney"`
+    }
+
+    var $hold_lapsed_conflict {
+      value = false
+    }
+
+    db.get bookings {
+      field_name = "id"
+      field_value = $input.payload.booking_id
+    } as $Booking
+
+    // If the 15-minute internal hold has technically lapsed, don't reject
+    // outright — re-check whether the exact room/time slot is still free.
+    // If nobody else has taken it, the customer can still complete payment.
+    conditional {
+      if ($Booking != null && $Booking.status == "hold" && $Booking.hold_expires_at_ts != null && $Booking.hold_expires_at_ts <= $now_ts) {
+        db.query bookings {
+          where = $db.bookings.id != $Booking.id && $db.bookings.location_id == $Booking.location_id && $db.bookings.party_room_id == $Booking.party_room_id && $db.bookings.start_ts < $Booking.end_ts && $db.bookings.end_ts > $Booking.start_ts && ($db.bookings.status == "pending_payment" || $db.bookings.status == "deposit_paid" || $db.bookings.status == "paid" || $db.bookings.status == "confirmed" || ($db.bookings.status == "hold" && $db.bookings.hold_expires_at_ts > $now_ts))
+          return = {type: "list"}
+        } as $slot_conflicts
+
+        conditional {
+          if ($slot_conflicts[0] != null) {
+            var $hold_lapsed_conflict {
+              value = true
+            }
+          }
+        }
+      }
+    }
+
+    conditional {
+      if ($Booking == null) {
+        var $error_message {
+          value = "Booking not found"
+        }
+      }
+
+      elseif ($Booking.status != "hold" && $Booking.status != "pending_payment") {
+        var $error_message {
+          value = "Only hold or pending payment bookings can be paid"
+        }
+      }
+
+      elseif ($hold_lapsed_conflict == true) {
+        var $error_message {
+          value = "Sorry, this time slot has since been booked by someone else. Please start a new booking."
+        }
+      }
+
+      elseif ($Booking.grand_total_cents == null || $Booking.grand_total_cents <= 0) {
+        var $error_message {
+          value = "Booking total is invalid"
+        }
+      }
+
+      else {
+        var $remaining_balance_cents {
+          value = $Booking.grand_total_cents - $deposit_cents
+        }
+
+        conditional {
+          if ($remaining_balance_cents < 0) {
+            var $remaining_balance_cents {
+              value = 0
+            }
+          }
+        }
+
+        conditional {
+          if ($Booking.status == "pending_payment" && $Booking.payment_url != null && $Booking.payment_url != "") {
+            var $payment_url {
+              value = $Booking.payment_url
+            }
+
+            var $stripe_session_id {
+              value = $Booking.stripe_session_id
+            }
+          }
+
+          else {
+            db.get stripe_location_keys {
+              field_name = "location_id"
+              field_value = $Booking.location_id
+            } as $StripeKey
+
+            conditional {
+              if ($StripeKey == null) {
+                var $error_message {
+                  value = "Stripe key is not configured for this booking location"
+                }
+              }
+
+              elseif ($StripeKey.is_active != true) {
+                var $error_message {
+                  value = "Stripe key is inactive for this booking location"
+                }
+              }
+
+              else {
+                conditional {
+                  if ($stripe_mode == "live") {
+                    var $stripe_secret_key {
+                      value = $StripeKey.stripe_secret_key_live
+                    }
+
+                    var $success_url {
+                      value = "https://booking.morefun.com.au/booking/booking-success?session_id={CHECKOUT_SESSION_ID}&booking_id="|concat:$Booking.id:""
+                    }
+
+                    var $cancel_url {
+                      value = "https://booking.morefun.com.au/booking/booking-cancelled?booking_cancelled=1&booking_id="|concat:$Booking.id:""
+                    }
+                  }
+
+                  else {
+                    var $stripe_secret_key {
+                      value = $StripeKey.stripe_secret_key_test
+                    }
+
+                    var $success_url {
+                      value = "https://booking.morefun.com.au/booking/booking-success?session_id={CHECKOUT_SESSION_ID}&booking_id="|concat:$Booking.id:""
+                    }
+
+                    var $cancel_url {
+                      value = "https://booking.morefun.com.au/booking/booking-cancelled?booking_cancelled=1&booking_id="|concat:$Booking.id:""
+                    }
+                  }
+                }
+
+                conditional {
+                  if ($stripe_secret_key == null || $stripe_secret_key == "") {
+                    var $error_message {
+                      value = "Stripe secret key is missing for this booking location"
+                    }
+                  }
+
+                  else {
+                    api.request {
+                      url = "https://api.stripe.com/v1/checkout/sessions"
+                      method = "POST"
+                      params = {}
+                        |set:"mode":"payment"
+                        |set:"success_url":$success_url
+                        |set:"cancel_url":$cancel_url
+                        |set:"customer_email":$Booking.customer_email
+                        |set:"client_reference_id":$Booking.id
+                        |set:"line_items[0][quantity]":1
+                        |set:"line_items[0][price_data][currency]":"aud"
+                        |set:"line_items[0][price_data][unit_amount]":$deposit_cents
+                        |set:"line_items[0][price_data][product_data][name]":"KOKO Party Booking Deposit"
+                        |set:"line_items[1][quantity]":1
+                        |set:"line_items[1][price_data][currency]":"aud"
+                        |set:"line_items[1][price_data][unit_amount]":$surcharge_cents
+                        |set:"line_items[1][price_data][product_data][name]":"Card Surcharge"
+                        |set:"metadata[booking_id]":$Booking.id
+                        |set:"metadata[location_id]":$Booking.location_id
+                        |set:"metadata[package_id]":$Booking.package_id
+                        |set:"metadata[payment_type]":"deposit"
+                        |set:"metadata[stripe_mode]":$stripe_mode
+                        |set:"metadata[deposit_cents]":$deposit_cents
+                        |set:"metadata[surcharge_cents]":$surcharge_cents
+                        |set:"metadata[remaining_balance_cents]":$remaining_balance_cents
+                      headers = []
+                        |push:("Authorization: Bearer "|concat:$stripe_secret_key:"")
+                        |push:"Stripe-Version: 2026-04-22.dahlia"
+                        |push:"Content-Type: application/x-www-form-urlencoded"
+                    } as $StripeSession
+
+                    var $stripe_session_id {
+                      value = $StripeSession
+                        |get:"response"
+                        |get:"result"
+                        |get:"id"
+                    }
+
+                    var $payment_url {
+                      value = $StripeSession
+                        |get:"response"
+                        |get:"result"
+                        |get:"url"
+                    }
+
+                    conditional {
+                      if ($payment_url == null || $payment_url == "") {
+                        var $stripe_session_id {
+                          value = $StripeSession|get:"result"|get:"id"
+                        }
+
+                        var $payment_url {
+                          value = $StripeSession|get:"result"|get:"url"
+                        }
+                      }
+                    }
+
+                    conditional {
+                      if ($payment_url == null || $payment_url == "") {
+                        var $stripe_session_id {
+                          value = $StripeSession|get:"id"
+                        }
+
+                        var $payment_url {
+                          value = $StripeSession|get:"url"
+                        }
+                      }
+                    }
+
+                    conditional {
+                      if ($payment_url == null || $payment_url == "") {
+                        var $stripe_session_id {
+                          value = $StripeSession|get:"body"|get:"id"
+                        }
+
+                        var $payment_url {
+                          value = $StripeSession|get:"body"|get:"url"
+                        }
+                      }
+                    }
+
+                    conditional {
+                      if ($payment_url == null || $payment_url == "") {
+                        var $stripe_session_id {
+                          value = $StripeSession
+                            |get:"response"
+                            |get:"body"
+                            |get:"id"
+                        }
+
+                        var $payment_url {
+                          value = $StripeSession
+                            |get:"response"
+                            |get:"body"
+                            |get:"url"
+                        }
+                      }
+                    }
+
+                    conditional {
+                      if ($payment_url == null || $payment_url == "") {
+                        var $error_message {
+                          value = "Stripe deposit session was not created or payment URL was not found. Please check Stripe secret key and Stripe response."
+                        }
+                      }
+
+                      else {
+                        db.patch bookings {
+                          field_name = "id"
+                          field_value = $Booking.id
+                          data = {
+                            status            : "pending_payment"
+                            hold_expires_at_ts: null
+                            stripe_session_id : $stripe_session_id
+                            payment_url       : $payment_url
+                            surcharge_cents   : $surcharge_cents
+                          }
+                        } as $Booking
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  response = {
+    error_message    : $error_message
+    booking          : $Booking
+    payment_url      : $payment_url
+    stripe_session_id: $stripe_session_id
+    stripe_mode      : $stripe_mode
+  }
+}
