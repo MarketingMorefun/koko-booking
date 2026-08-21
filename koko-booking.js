@@ -931,6 +931,8 @@ show("reviewSection",true);
 function injectDiscountBanner(b){
 const old=document.getElementById("kokoDiscountBanner");
 if(old)old.remove();
+const oldTotal=document.getElementById("kokoDiscountedTotal");
+if(oldTotal)oldTotal.remove();
 const discountCents=Number(b.discount_cents||0);
 if(discountCents<=0)return;
 const anchor=$("reviewGrandTotal");
@@ -941,6 +943,14 @@ box.id="kokoDiscountBanner";
 box.style.cssText="margin-top:8px;padding:10px 14px;border-radius:12px;background:#EAF8EF;color:#2F8F5B;font-family:'Maven Pro',Arial,sans-serif;font-size:14px;font-weight:800;display:flex;justify-content:space-between;align-items:center;";
 box.innerHTML="<span>"+label+"</span><span>-"+money(discountCents)+"</span>";
 anchor.parentNode.insertBefore(box,anchor.nextSibling);
+
+const grandCents=Number((window.bookingState.quote||{}).grand_total_cents||0);
+const newTotalCents=Math.max(grandCents-discountCents,0);
+const totalRow=document.createElement("div");
+totalRow.id="kokoDiscountedTotal";
+totalRow.style.cssText="margin-top:8px;padding-top:8px;border-top:1px solid #E8DDCC;font-family:'Maven Pro',Arial,sans-serif;font-size:15px;font-weight:900;color:#2F241C;display:flex;justify-content:space-between;align-items:center;";
+totalRow.innerHTML="<span>Total after discount</span><span>"+money(newTotalCents)+"</span>";
+box.parentNode.insertBefore(totalRow,box.nextSibling);
 }
 function injectSurchargeBreakdown(btn){
 if(!btn||!btn.parentNode)return;

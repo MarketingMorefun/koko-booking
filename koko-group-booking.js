@@ -1143,6 +1143,8 @@ function renderGroupReview(){
 function injectDiscountBanner(b){
   const old=document.getElementById("kokoGroupDiscountBanner");
   if(old) old.remove();
+  const oldTotal=document.getElementById("kokoGroupDiscountedTotal");
+  if(oldTotal) oldTotal.remove();
   const discountCents=Number(b.discount_cents || 0);
   if(discountCents<=0) return;
   const anchor=$("groupReviewGrandTotal");
@@ -1153,6 +1155,14 @@ function injectDiscountBanner(b){
   box.style.cssText="margin-top:8px;padding:10px 14px;border-radius:12px;background:#EAF8EF;color:#2F8F5B;font-family:'Maven Pro',Arial,sans-serif;font-size:14px;font-weight:800;display:flex;justify-content:space-between;align-items:center;";
   box.innerHTML="<span>"+label+"</span><span>-"+money(discountCents)+"</span>";
   anchor.parentNode.insertBefore(box,anchor.nextSibling);
+
+  const grandCents=Number((window.groupBookingState.quote||{}).grand_total_cents || 0);
+  const newTotalCents=Math.max(grandCents-discountCents,0);
+  const totalRow=document.createElement("div");
+  totalRow.id="kokoGroupDiscountedTotal";
+  totalRow.style.cssText="margin-top:8px;padding-top:8px;border-top:1px solid #E8DDCC;font-family:'Maven Pro',Arial,sans-serif;font-size:15px;font-weight:900;color:#2F241C;display:flex;justify-content:space-between;align-items:center;";
+  totalRow.innerHTML="<span>Total after discount</span><span>"+money(newTotalCents)+"</span>";
+  box.parentNode.insertBefore(totalRow,box.nextSibling);
 }
 function injectSurchargeBreakdown(btn){
   if(!btn||!btn.parentNode)return;
