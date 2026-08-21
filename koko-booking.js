@@ -38,7 +38,8 @@ customer_email:"",
 birthday_child_name:"",
 birthday_child_gender:"",
 average_age:"",
-booking_notes:""
+booking_notes:"",
+referral_code:""
 };
 function $(id){return document.getElementById(id)}
 function locLimit(slug){return LOCATION_GUEST_LIMITS[slug]||25}
@@ -850,6 +851,7 @@ function validateContact(){
 const name=val("customerName").trim(),phone=val("customerPhone").trim(),email=val("customerEmail").trim();
 const childName=val("birthdayChildName").trim();
 const gender=val("birthdayChildGender").trim(),age=val("averageAge").trim(),notes=val("bookingNotes").trim();
+const referralCode=val("referralCode").trim();
 ["customerName","customerPhone","customerEmail","birthdayChildName","birthdayChildGender","averageAge"].forEach(id=>clearFieldError(id));
 const fail=(id,message)=>{
 setFieldError(id,message);
@@ -866,7 +868,7 @@ if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return fail("customerEmail","Please
 if(!childName)return fail("birthdayChildName","Please enter the birthday child's name.");
 if(!gender)return fail("birthdayChildGender","Please select the birthday child's gender.");
 if(!age)return fail("averageAge","Please enter the average age of guests.");
-Object.assign(window.bookingState,{customer_name:name,customer_phone:phone,customer_email:email,birthday_child_name:childName,birthday_child_gender:gender,average_age:age,booking_notes:notes});
+Object.assign(window.bookingState,{customer_name:name,customer_phone:phone,customer_email:email,birthday_child_name:childName,birthday_child_gender:gender,average_age:age,booking_notes:notes,referral_code:referralCode});
 return true;
 }
 function compactPayload(obj){
@@ -900,7 +902,7 @@ return walk(data);
 function renderReview(){
 if(!$("reviewSection"))return msg("reviewSection not found. Please add id='reviewSection' to Step 6.",true);
 const q=window.bookingState.quote||{},b=window.bookingState.booking||{},id=bookingId(b);
-const grand=Number(q.grand_total_cents||0),remain=Math.max(grand-DEPOSIT_CENTS,0);
+const grand=Number(q.grand_total_cents||0),discountCents=Number(b.discount_cents||0),remain=Math.max(grand-DEPOSIT_CENTS-discountCents,0);
 reviewText("reviewStatus","Deposit required");
 reviewText("reviewLocation",locName(window.bookingState.location_slug));
 reviewText("reviewDate",window.bookingState.date);
@@ -921,9 +923,24 @@ reviewText("reviewGrandTotal",money(q.grand_total_cents));
 reviewText("reviewDepositDue",money(DEPOSIT_CENTS));
 reviewText("reviewRemainingBalance",money(remain));
 reviewText("reviewBookingId",id||"-");
+injectDiscountBanner(b);
 const btn=$("confirmBookingBtn")||$("confitmBookingBtn")||document.querySelector("[data-koko-action='confirm-booking']");
 if(btn){injectSurchargeBreakdown(btn);btn.textContent="Pay "+money(PAYABLE_NOW_CENTS);}
 show("reviewSection",true);
+}
+function injectDiscountBanner(b){
+const old=document.getElementById("kokoDiscountBanner");
+if(old)old.remove();
+const discountCents=Number(b.discount_cents||0);
+if(discountCents<=0)return;
+const anchor=$("reviewGrandTotal");
+if(!anchor||!anchor.parentNode)return;
+const label=b.discount_reason==="referral"?"Referral discount":"Welcome back discount";
+const box=document.createElement("div");
+box.id="kokoDiscountBanner";
+box.style.cssText="margin-top:8px;padding:10px 14px;border-radius:12px;background:#EAF8EF;color:#2F8F5B;font-family:'Maven Pro',Arial,sans-serif;font-size:14px;font-weight:800;display:flex;justify-content:space-between;align-items:center;";
+box.innerHTML="<span>"+label+"</span><span>-"+money(discountCents)+"</span>";
+anchor.parentNode.insertBefore(box,anchor.nextSibling);
 }
 function injectSurchargeBreakdown(btn){
 if(!btn||!btn.parentNode)return;
@@ -954,7 +971,7 @@ msg("Creating booking...");
 try{
 const hasPartyRoomAddon=window.bookingState.addons.some(a=>Number(a.addon_id)===7&&Number(a.qty||0)>0);
 const effectiveEndTs=hasPartyRoomAddon?Number(window.bookingState.end_ts)+3600000:window.bookingState.end_ts;
-const payload=compactPayload({location_slug:window.bookingState.location_slug,date:window.bookingState.date,guests:Number(window.bookingState.guests||0),party_room_id:window.bookingState.party_room_id,start_ts:window.bookingState.start_ts,end_ts:effectiveEndTs,package_id:window.bookingState.package_id,addons:quoteAddons(),customer_name:window.bookingState.customer_name,customer_phone:window.bookingState.customer_phone,customer_email:window.bookingState.customer_email,birthday_child_name:window.bookingState.birthday_child_name,birthday_child_gender:window.bookingState.birthday_child_gender,average_age:window.bookingState.average_age?Number(window.bookingState.average_age):undefined,booking_notes:window.bookingState.booking_notes});
+const payload=compactPayload({location_slug:window.bookingState.location_slug,date:window.bookingState.date,guests:Number(window.bookingState.guests||0),party_room_id:window.bookingState.party_room_id,start_ts:window.bookingState.start_ts,end_ts:effectiveEndTs,package_id:window.bookingState.package_id,addons:quoteAddons(),customer_name:window.bookingState.customer_name,customer_phone:window.bookingState.customer_phone,customer_email:window.bookingState.customer_email,birthday_child_name:window.bookingState.birthday_child_name,birthday_child_gender:window.bookingState.birthday_child_gender,average_age:window.bookingState.average_age?Number(window.bookingState.average_age):undefined,booking_notes:window.bookingState.booking_notes,referral_code:window.bookingState.referral_code});
 const r=await fetch(`${BASE_URL}/CreateBooking`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload})});
 const text=await r.text();
 if(!text.trim())return msg("CreateBooking API returned an empty response.",true);

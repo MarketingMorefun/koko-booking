@@ -42,7 +42,8 @@ window.groupBookingState={
   customer_name:"",
   customer_phone:"",
   customer_email:"",
-  booking_notes:""
+  booking_notes:"",
+  referral_code:""
 };
 
 function ids(id){
@@ -1043,6 +1044,7 @@ function validateGroupContact(){
   const phone=val("groupCustomerPhone").replace(/\s+/g,"");
   const email=val("groupCustomerEmail");
   const notes=val("groupBookingNotes");
+  const referralCode=val("groupReferralCode").trim();
   const err=$("groupContactError");
   if(err) err.textContent="";
   if(!name) return contactError("Please enter your full name.");
@@ -1054,7 +1056,8 @@ function validateGroupContact(){
     customer_name:name,
     customer_phone:phone,
     customer_email:email,
-    booking_notes:notes
+    booking_notes:notes,
+    referral_code:referralCode
   });
   return true;
 }
@@ -1086,7 +1089,8 @@ async function createGroupBooking(){
       customer_name:window.groupBookingState.customer_name,
       customer_phone:window.groupBookingState.customer_phone,
       customer_email:window.groupBookingState.customer_email,
-      booking_notes:window.groupBookingState.booking_notes
+      booking_notes:window.groupBookingState.booking_notes,
+      referral_code:window.groupBookingState.referral_code
     };
     const r=await fetch(BASE_URL + "/CreateGroupBooking",{
       method:"POST",
@@ -1132,8 +1136,23 @@ function renderGroupReview(){
   reviewText("groupReviewCustomerEmail",window.groupBookingState.customer_email);
   reviewText("groupReviewBookingNotes",window.groupBookingState.booking_notes || "-");
   reviewText("groupReviewBookingId",bookingId(b) || "-");
+  injectDiscountBanner(b);
   const cBtn=$("groupConfirmBtn");
   if(cBtn){injectSurchargeBreakdown(cBtn);cBtn.textContent="Pay "+money(PAYABLE_NOW_CENTS);}
+}
+function injectDiscountBanner(b){
+  const old=document.getElementById("kokoGroupDiscountBanner");
+  if(old) old.remove();
+  const discountCents=Number(b.discount_cents || 0);
+  if(discountCents<=0) return;
+  const anchor=$("groupReviewGrandTotal");
+  if(!anchor||!anchor.parentNode) return;
+  const label=b.discount_reason==="referral" ? "Referral discount" : "Welcome back discount";
+  const box=document.createElement("div");
+  box.id="kokoGroupDiscountBanner";
+  box.style.cssText="margin-top:8px;padding:10px 14px;border-radius:12px;background:#EAF8EF;color:#2F8F5B;font-family:'Maven Pro',Arial,sans-serif;font-size:14px;font-weight:800;display:flex;justify-content:space-between;align-items:center;";
+  box.innerHTML="<span>"+label+"</span><span>-"+money(discountCents)+"</span>";
+  anchor.parentNode.insertBefore(box,anchor.nextSibling);
 }
 function injectSurchargeBreakdown(btn){
   if(!btn||!btn.parentNode)return;

@@ -1,0 +1,264 @@
+query BackfillReferralCodesAndCredits verb=POST {
+  api_group = "KOKO Booking"
+
+  // ============================================================
+  // ONE-TIME MANUAL BACKFILL — for historical deposit_paid/paid bookings
+  // that predate the referral feature and never got a referral_code.
+  //
+  // Call this repeatedly (small batches) until emails_sent + already_done
+  // stops growing / codes_minted comes back 0. Safe to re-run: a booking
+  // that already has a referral_code is never touched again in the "mint"
+  // step, and a booking whose referral_announcement_sent_at is already
+  // set is never re-emailed in the "email" step — same retry-safe
+  // pattern as RunReminders / backfillMissingNewBookingEmails.
+  //
+  // Two separate steps, deliberately decoupled (same reasoning as the
+  // [NEW BOOKING] store-email fix): minting a code + issuing a credit is
+  // per BOOKING (matches the live system — every real payment earns its
+  // own code and its own $30 credit, so a customer with 3 old paid
+  // bookings legitimately ends up with 3 codes and 3 credits). Sending
+  // the ANNOUNCEMENT EMAIL is deduped per CUSTOMER EMAIL instead — nobody
+  // should get 3 near-identical "here's your code" emails just because
+  // they booked 3 times before this feature existed.
+  // ============================================================
+  input {
+    text secret
+    int batch_limit?
+  }
+
+  stack {
+    var $error_message {
+      value = null
+    }
+
+    var $now_ts {
+      value = `"now"|to_timestamp:"Australia/Sydney"`
+    }
+
+    var $codes_minted {
+      value = 0
+    }
+
+    var $emails_sent {
+      value = 0
+    }
+
+    var $already_done {
+      value = 0
+    }
+
+    var $batch_limit_val {
+      value = $input.batch_limit|first_notnull:15
+    }
+
+    var $NeedCode {
+      value = []
+    }
+
+    var $NeedEmail {
+      value = []
+    }
+
+    conditional {
+      if ($input.secret != "kR7mP2vXqL9wZ4jN6bT0dS3fH8cY1aG5") {
+        var $error_message {
+          value = "Unauthorized"
+        }
+      }
+
+      else {
+        // ============================================================
+        // Step 1 — mint referral_code + issue a "repeat_customer" credit
+        // for every paid booking that doesn't have a code yet.
+        // ============================================================
+        // No batching here — this step is just internal db.patch/db.add
+        // calls (no external API, no rate limit risk), so it's safe and
+        // fast to just do all of them in one pass regardless of count.
+        db.query bookings {
+          where = ($db.bookings.status == "deposit_paid" || $db.bookings.status == "paid") && ($db.bookings.referral_code == null || $db.bookings.referral_code == "")
+          return = {type: "list"}
+        } as $NeedCode
+
+        foreach ($NeedCode) {
+          each as $b {
+            var $new_code {
+              value = "KOKO-"
+                |concat:($b.id|to_text):""
+                |concat:"-":""
+                |concat:((($b.id * 104729 + $now_ts) % 8999) + 1000)|to_text:""
+            }
+
+            db.patch bookings {
+              field_name = "id"
+              field_value = $b.id
+              data = {referral_code: $new_code}
+            } as $UpdatedBooking
+
+            conditional {
+              if ($b.customer_email != null && $b.customer_email != "") {
+                db.add customer_credits {
+                  enforce_hidden_fields = false
+                  data = {
+                    customer_email    : $b.customer_email|trim|lower
+                    amount_cents      : 3000
+                    reason            : "repeat_customer"
+                    source_booking_id : $b.id
+                    status            : "available"
+                    used_booking_id   : 0
+                  }
+                } as $NewCredit
+              }
+            }
+
+            var $codes_minted {
+              value = $codes_minted + 1
+            }
+          }
+        }
+
+        // ============================================================
+        // Step 2 — send the "you have a referral code" announcement,
+        // once per customer email, to bookings not yet marked as emailed.
+        // ============================================================
+        db.query bookings {
+          where = ($db.bookings.status == "deposit_paid" || $db.bookings.status == "paid") && $db.bookings.referral_announcement_sent_at == null && $db.bookings.customer_email != null && $db.bookings.customer_email != ""
+          return = {type: "list"}
+        } as $NeedEmail
+
+        // Batched manually with a counter instead of slicing the array —
+        // once we've handled batch_limit_val items (sent or skipped),
+        // stop touching anything else this call. Whatever's left over
+        // just shows up again next time this endpoint is called, since
+        // nothing about it was modified.
+        var $email_batch_processed {
+          value = 0
+        }
+
+        // Xano's db.query "where" clause can't apply |trim|lower to a
+        // database column (that only works on values already in memory).
+        // Fetch every already-emailed booking ONCE up front instead, and
+        // check membership per item in memory with array.filter below.
+        db.query bookings {
+          where = $db.bookings.referral_announcement_sent_at != null
+          return = {type: "list"}
+        } as $AlreadyEmailedList
+
+        foreach ($NeedEmail) {
+          each as $eb {
+            conditional {
+              if ($email_batch_processed < $batch_limit_val) {
+                var $eb_email_norm {
+                  value = $eb.customer_email|trim|lower
+                }
+
+                // Has ANY other booking for this same email already been
+                // emailed? If so, skip sending again but still mark this
+                // one done so it stops showing up in future batches.
+                array.filter ($AlreadyEmailedList) if (($this.customer_email|trim|lower) == $eb_email_norm) as $AlreadyEmailedMatches
+                array.find ($AlreadyEmailedMatches) if ($this.id > 0) as $AlreadyEmailedBooking
+
+                conditional {
+                  if ($AlreadyEmailedBooking != null) {
+                    db.patch bookings {
+                      field_name = "id"
+                      field_value = $eb.id
+                      data = {referral_announcement_sent_at: $now_ts}
+                    } as $SkippedMark
+
+                    var $already_done {
+                      value = $already_done + 1
+                    }
+                  }
+
+                  else {
+                    // Re-fetch so we have this booking's freshly-minted code
+                    // even if it was just set moments ago in Step 1.
+                    db.get bookings {
+                      field_name = "id"
+                      field_value = $eb.id
+                    } as $FreshBooking
+
+                    conditional {
+                      if ($FreshBooking.referral_code != null && $FreshBooking.referral_code != "") {
+                        var $referral_card_url {
+                          value = "https://booking.morefun.com.au/booking/referral-card?code="
+                            |concat:$FreshBooking.referral_code:""
+                        }
+
+                        var $email_html {
+                          value = "<div style='max-width:600px;margin:0 auto;padding:28px 20px;background:#FFFDF9;font-family:Arial,sans-serif;color:#2F241C;'><div style='background:#ffffff;border:1px solid #E8DDCC;border-radius:24px;padding:34px 28px;text-align:center;'><div style='display:inline-block;padding:6px 16px;border-radius:999px;background:#F5D949;border:1px solid #221D16;font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#221D16;margin-bottom:18px;'>New: Refer a Friend</div><h1 style='margin:0 0 14px;font-size:28px;line-height:1.2;color:#2F241C;'>You've got $30 waiting for your next visit</h1><p style='margin:0 0 22px;color:#7b6a58;font-size:15px;line-height:1.6;'>Hi {{CUSTOMER_NAME}}, thanks for booking with KOKO Amusement before. As a thank-you, we've already added a <strong>$30 credit</strong> to your account — it'll apply automatically the next time you book a birthday party or group event with us, no code needed.</p><p style='margin:0 0 22px;color:#7b6a58;font-size:15px;line-height:1.6;'>You also now have your own referral code. Share it with a friend — when they book their first KOKO party or group event and use it, <strong>they get $30 off</strong>, and <strong>you get another $30 off</strong> your next visit too.</p><div style='display:inline-block;padding:16px 28px;border:2px dashed #221D16;border-radius:16px;background:#FFFBF5;font-size:26px;font-weight:900;letter-spacing:0.05em;color:#221D16;margin-bottom:22px;'>{{REFERRAL_CODE}}</div><div><a href='{{REFERRAL_CARD_URL}}' style='display:inline-block;padding:12px 22px;border:2px solid #221D16;border-radius:14px;background:#F5D949;box-shadow:3px 3px 0 #221D16;font-weight:800;font-size:14px;color:#221D16;text-decoration:none;'>View &amp; print your code</a></div><p style='margin:26px 0 0;font-size:13px;line-height:1.6;color:#9A8B7C;'>Questions? Email <a href='mailto:marketing@morefun.com.au' style='color:#B86816;'>marketing@morefun.com.au</a>.</p></div></div>"
+                        }
+
+                        var $email_html {
+                          value = $email_html|replace:"{{CUSTOMER_NAME}}":($FreshBooking.customer_name|first_notempty:"there")
+                        }
+
+                        var $email_html {
+                          value = $email_html|replace:"{{REFERRAL_CODE}}":$FreshBooking.referral_code
+                        }
+
+                        var $email_html {
+                          value = $email_html|replace:"{{REFERRAL_CARD_URL}}":$referral_card_url
+                        }
+
+                        api.request {
+                          url = "https://api.resend.com/emails"
+                          method = "POST"
+                          params = {
+                            from   : "KOKO Amusement <booking@mail.morefun.com.au>"
+                            to     : $FreshBooking.customer_email
+                            subject: "You've got a $30 referral code from KOKO Amusement"
+                            html   : $email_html
+                          }
+                          headers = []
+                            |push:"Authorization: Bearer re_YOUR_RESEND_API_KEY"
+                            |push:"Content-Type: application/json"
+                        } as $SendResult
+
+                        conditional {
+                          if ($SendResult.response.status >= 200 && $SendResult.response.status < 300) {
+                            db.patch bookings {
+                              field_name = "id"
+                              field_value = $eb.id
+                              data = {referral_announcement_sent_at: $now_ts}
+                            } as $MarkedSent
+
+                            var $emails_sent {
+                              value = $emails_sent + 1
+                            }
+
+                            // Record this in the in-memory list too — if
+                            // this same customer has a second un-emailed
+                            // booking later in this same batch, it needs
+                            // to see them as already handled right now,
+                            // not just on the next call.
+                            array.push $AlreadyEmailedList {
+                              value = $eb
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+
+                var $email_batch_processed {
+                  value = $email_batch_processed + 1
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  response = {
+    error_message  : $error_message
+    codes_minted   : $codes_minted
+    emails_sent    : $emails_sent
+    already_done   : $already_done
+    still_need_code: $NeedCode|count
+    still_need_email: $NeedEmail|count
+  }
+}

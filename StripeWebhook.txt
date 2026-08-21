@@ -1,0 +1,586 @@
+query StripeWebhook verb=POST {
+  api_group = "KOKO Booking"
+
+  input {
+  }
+
+  stack {
+    var $error_message {
+      value = null
+    }
+  
+    var $message {
+      value = "Webhook received"
+    }
+  
+    var $event {
+      value = null
+    }
+  
+    var $event_type {
+      value = null
+    }
+  
+    var $session {
+      value = null
+    }
+  
+    var $booking_id {
+      value = null
+    }
+  
+    var $Booking {
+      value = null
+    }
+  
+    var $Package {
+      value = null
+    }
+  
+    var $ResendEmail {
+      value = null
+    }
+  
+    var $email_subject {
+      value = "KOKO Booking Deposit Confirmation"
+    }
+  
+    var $child_name {
+      value = ""
+    }
+  
+    var $email_heading {
+      value = "Your KOKO booking is confirmed!"
+    }
+  
+    var $email_html {
+      value = ""
+    }
+  
+    var $package_name {
+      value = ""
+    }
+  
+    var $package_total_display {
+      value = ""
+    }
+  
+    var $addons_total_display {
+      value = ""
+    }
+  
+    var $grand_total_display {
+      value = ""
+    }
+  
+    var $deposit_paid_cents {
+      value = 5000
+    }
+  
+    var $deposit_paid_display {
+      value = "$50.00"
+    }
+  
+    var $remaining_balance_cents {
+      value = 0
+    }
+  
+    var $remaining_balance_display {
+      value = ""
+    }
+  
+    var $booking_start_display {
+      value = ""
+    }
+  
+    var $booking_end_display {
+      value = ""
+    }
+  
+    var $booking_time_display {
+      value = ""
+    }
+  
+    var $location_display {
+      value = "KOKO Amusement"
+    }
+  
+    var $package_display {
+      value = ""
+    }
+
+    var $min_guest_note {
+      value = ""
+    }
+
+    var $now_ts {
+      value = `"now"|to_timestamp:"Australia/Sydney"`
+    }
+  
+    util.get_raw_input {
+      encoding = "json"
+      exclude_middleware = false
+    } as $event
+  
+    var $event_type {
+      value = $event|get:"type"
+    }
+  
+    var $session {
+      value = $event|get:"data"|get:"object"
+    }
+  
+    conditional {
+      if ($session == null) {
+        var $error_message {
+          value = "Missing Stripe session object"
+        }
+      
+        var $message {
+          value = "Missing Stripe session object"
+        }
+      }
+    
+      else {
+        var $booking_id {
+          value = $session|get:"metadata"|get:"booking_id"
+        }
+      
+        conditional {
+          if ($booking_id == null || $booking_id == "") {
+            var $booking_id {
+              value = $session|get:"client_reference_id"
+            }
+          }
+        }
+      
+        conditional {
+          if ($booking_id == null || $booking_id == "") {
+            var $error_message {
+              value = "Missing booking_id in Stripe session"
+            }
+          
+            var $message {
+              value = "Missing booking_id in Stripe session"
+            }
+          }
+        
+          else {
+            db.get bookings {
+              field_name = "id"
+              field_value = $booking_id
+            } as $Booking
+          
+            conditional {
+              if ($Booking == null) {
+                var $error_message {
+                  value = "Booking not found"
+                }
+              
+                var $message {
+                  value = "Booking not found"
+                }
+              }
+            
+              elseif ($event_type == "checkout.session.completed" || $event_type == "checkout.session.async_payment_succeeded") {
+                var $remaining_balance_cents {
+                  value = $Booking.grand_total_cents - $deposit_paid_cents - ($Booking.discount_cents|first_notnull:0)
+                }
+
+                conditional {
+                  if ($remaining_balance_cents < 0) {
+                    var $remaining_balance_cents {
+                      value = 0
+                    }
+                  }
+                }
+
+                // This booking's own referral code — only minted once it's
+                // a real, paid booking (not at hold/pending_payment time),
+                // so a code can never point at something that might still
+                // fall through and never happen. Random-ish suffix derived
+                // from booking id + current timestamp so codes aren't
+                // sequentially guessable the way a plain booking id would be.
+                var $referral_code {
+                  value = "KOKO-"
+                    |concat:($Booking.id|to_text):""
+                    |concat:"-":""
+                    |concat:((($Booking.id * 104729 + $now_ts) % 8999) + 1000)|to_text:""
+                }
+
+                // CHANGE THIS if the referral card page ends up at a
+                // different path than /booking/referral-card.
+                var $referral_card_url {
+                  value = "https://booking.morefun.com.au/booking/referral-card?code="
+                    |concat:$referral_code:""
+                }
+
+                db.patch bookings {
+                  field_name = "id"
+                  field_value = $Booking.id
+                  data = {
+                    status            : "deposit_paid"
+                    paid_at           : $now_ts
+                    hold_expires_at_ts: null
+                    deposit_paid_cents: $deposit_paid_cents
+                    balance_due_cents : $remaining_balance_cents
+                    referral_code     : $referral_code
+                  }
+                } as $Booking
+
+                // ---- Finalise this booking's own $30 discount (if any) ----
+                // Only now, on a confirmed payment, do we actually consume
+                // a pre-existing credit or hand the referrer their reward —
+                // never at CreateBooking/CreateGroupBooking time, so an
+                // abandoned hold can't burn a real credit or pay out a
+                // referral reward for a booking that never actually happened.
+                conditional {
+                  if (($Booking.applied_credit_id|first_notnull:0) > 0) {
+                    db.patch customer_credits {
+                      field_name = "id"
+                      field_value = $Booking.applied_credit_id
+                      data = {
+                        status         : "used"
+                        used_booking_id: $Booking.id
+                      }
+                    } as $UsedCredit
+                  }
+
+                  elseif ($Booking.discount_reason == "referral" && $Booking.referral_code_used != null && $Booking.referral_code_used != "") {
+                    db.query bookings {
+                      where = $db.bookings.referral_code == $Booking.referral_code_used
+                      return = {type: "single"}
+                    } as $ReferringBooking
+
+                    conditional {
+                      if ($ReferringBooking != null) {
+                        db.add customer_credits {
+                          enforce_hidden_fields = false
+                          data = {
+                            customer_email    : $ReferringBooking.customer_email|trim|lower
+                            amount_cents      : 3000
+                            reason            : "referral_reward"
+                            source_booking_id : $Booking.id
+                            status            : "available"
+                            used_booking_id   : 0
+                          }
+                        } as $ReferralCredit
+                      }
+                    }
+                  }
+                }
+
+                // ---- Reward THIS customer for coming back next time ----
+                // Every booking that actually gets paid earns its own
+                // customer a $30 credit toward their NEXT booking — this is
+                // the "repeat customer" half of the feature, entirely
+                // separate from whether this booking itself used a discount.
+                db.add customer_credits {
+                  enforce_hidden_fields = false
+                  data = {
+                    customer_email    : $Booking.customer_email|trim|lower
+                    amount_cents      : 3000
+                    reason            : "repeat_customer"
+                    source_booking_id : $Booking.id
+                    status            : "available"
+                    used_booking_id   : 0
+                  }
+                } as $RepeatCredit
+
+                conditional {
+                  if ($Booking.package_id != null && $Booking.package_id != "") {
+                    db.get Packages {
+                      field_name = "id"
+                      field_value = $Booking.package_id
+                    } as $Package
+                  }
+                }
+              
+                var $email_subject {
+                  value = "KOKO Booking Deposit Confirmation #"|concat:$Booking.id:""
+                }
+              
+                conditional {
+                  if ($Booking.birthday_child_name != null && $Booking.birthday_child_name != "") {
+                    var $child_name {
+                      value = $Booking.birthday_child_name
+                    }
+                  
+                    var $email_heading {
+                      value = $child_name|concat:"'s birthday party is ready!":""
+                    }
+                  
+                    var $email_subject {
+                      value = $child_name|concat:"'s KOKO Birthday Party Confirmed #":""
+                    }
+                  
+                    var $email_subject {
+                      value = $email_subject|concat:$Booking.id:""
+                    }
+                  }
+                }
+              
+                var $package_total_display {
+                  value = "$"
+                    |concat:(($Booking.package_total_cents / 100)|round:2):""
+                }
+              
+                var $addons_total_display {
+                  value = "$"
+                    |concat:(($Booking.addons_total_cents / 100)|round:2):""
+                }
+              
+                var $grand_total_display {
+                  value = "$"
+                    |concat:(($Booking.grand_total_cents / 100)|round:2):""
+                }
+              
+                var $remaining_balance_display {
+                  value = "$"
+                    |concat:(($remaining_balance_cents / 100)|round:2):""
+                }
+              
+                var $booking_start_display {
+                  value = $Booking.start_ts
+                    |format_timestamp:"D, M j, Y H:i":"Australia/Sydney"
+                }
+              
+                var $booking_end_display {
+                  value = $Booking.end_ts
+                    |format_timestamp:"H:i":"Australia/Sydney"
+                }
+              
+                var $booking_time_display {
+                  value = $booking_start_display
+                    |concat:" - ":$booking_end_display
+                }
+              
+                conditional {
+                  if ($Booking.location_id != null && $Booking.location_id != "") {
+                    var $location_display {
+                      value = $Booking.location_id
+                    }
+                  }
+                }
+              
+                var $package_display {
+                  value = $Booking.package_id
+                }
+              
+                conditional {
+                  if ($Package != null) {
+                    var $package_name {
+                      value = $Package|get:"Name"
+                    }
+                  
+                    conditional {
+                      if ($package_name == null || $package_name == "") {
+                        var $package_name {
+                          value = $Package|get:"name"
+                        }
+                      }
+                    }
+                  
+                    conditional {
+                      if ($package_name != null && $package_name != "") {
+                        var $package_display {
+                          value = $package_name
+                        }
+                      }
+                    }
+                  }
+                }
+
+                conditional {
+                  if ($Booking.booking_type == "group_booking") {
+                    var $min_guest_note {
+                      value = "<div style='background:#FFF7EB;border:1px solid #F4D7B5;border-radius:18px;padding:18px 20px;margin:26px 0;color:#7b6a58;font-size:14px;line-height:1.7;'><strong style='color:#2F241C;'>Minimum charge:</strong> Group bookings are charged for a minimum of 10 guests. If fewer than 10 guests attend on the day, your booking will still be charged at the 10-guest rate.</div>"
+                    }
+                  }
+                }
+
+                var $email_html {
+                  value = "<div style='max-width:680px;margin:0 auto;padding:28px 20px;background:#FFFDF9;font-family:Arial,sans-serif;color:#2F241C;'><div style='background:#ffffff;border:1px solid #E8DDCC;border-radius:24px;padding:34px 28px;'><div style='text-align:center;margin-bottom:28px;'><div style='display:inline-block;width:64px;height:64px;border-radius:999px;background:#EAF8EF;color:#2F8F5B;text-align:center;font-size:34px;font-weight:900;line-height:64px;margin-bottom:18px;'>✓</div><div style='margin-bottom:18px;'><div style='display:inline-block;padding:10px 18px;border-radius:999px;background:#EAF8EF;color:#2F8F5B;font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;line-height:1;'>Deposit Paid</div></div><h1 style='margin:0 0 12px;font-size:32px;line-height:1.15;color:#2F241C;'>{{HEADING}}</h1><p style='margin:0;color:#7b6a58;font-size:16px;line-height:1.6;'>Hi {{CUSTOMER_NAME}}, your $50 deposit has been received. Your booking is confirmed. The remaining balance is payable on the day of your event.</p></div><div style='background:#faf6ee;border:1px solid #E8DDCC;border-radius:18px;padding:22px;margin:26px 0;'><h2 style='margin:0 0 16px;font-size:18px;color:#2F241C;'>Booking Details</h2><table style='width:100%;border-collapse:collapse;font-size:15px;'><tr><td style='padding:9px 0;color:#7b6a58;'>Booking ID</td><td style='padding:9px 0;text-align:right;font-weight:800;color:#2F241C;'>#{{BOOKING_ID}}</td></tr><tr><td style='padding:9px 0;color:#7b6a58;'>Location</td><td style='padding:9px 0;text-align:right;font-weight:800;color:#2F241C;'>{{LOCATION}}</td></tr><tr><td style='padding:9px 0;color:#7b6a58;'>Date</td><td style='padding:9px 0;text-align:right;font-weight:800;color:#2F241C;'>{{BOOKING_DATE}}</td></tr><tr><td style='padding:9px 0;color:#7b6a58;'>Booking Time</td><td style='padding:9px 0;text-align:right;font-weight:800;color:#2F241C;'>{{BOOKING_TIME}}</td></tr><tr><td style='padding:9px 0;color:#7b6a58;'>Guests</td><td style='padding:9px 0;text-align:right;font-weight:800;color:#2F241C;'>{{GUESTS}}</td></tr><tr><td style='padding:9px 0;color:#7b6a58;'>Package</td><td style='padding:9px 0;text-align:right;font-weight:800;color:#2F241C;'>{{PACKAGE}}</td></tr><tr><td style='padding:9px 0;color:#7b6a58;'>Status</td><td style='padding:9px 0;text-align:right;font-weight:800;color:#2F8F5B;'>Deposit Paid</td></tr></table></div><div style='background:#faf6ee;border:1px solid #E8DDCC;border-radius:18px;padding:22px;margin:26px 0;'><h2 style='margin:0 0 16px;font-size:18px;color:#2F241C;'>Payment Summary</h2><table style='width:100%;border-collapse:collapse;font-size:15px;'><tr><td style='padding:9px 0;color:#7b6a58;'>Package Total</td><td style='padding:9px 0;text-align:right;font-weight:800;color:#2F241C;'>{{PACKAGE_TOTAL}}</td></tr><tr><td style='padding:9px 0;color:#7b6a58;'>Add-ons Total</td><td style='padding:9px 0;text-align:right;font-weight:800;color:#2F241C;'>{{ADDONS_TOTAL}}</td></tr><tr><td style='padding:12px 0;color:#2F241C;border-top:1px solid #E8DDCC;font-weight:800;'>Grand Total</td><td style='padding:12px 0;text-align:right;border-top:1px solid #E8DDCC;font-weight:900;color:#2F241C;'>{{GRAND_TOTAL}}</td></tr><tr><td style='padding:12px 0;color:#2F8F5B;border-top:1px solid #E8DDCC;font-weight:800;'>Deposit Paid</td><td style='padding:12px 0;text-align:right;border-top:1px solid #E8DDCC;font-weight:900;color:#2F8F5B;'>{{DEPOSIT_PAID}}</td></tr><tr><td style='padding:12px 0;color:#B86816;font-weight:800;'>Remaining Balance</td><td style='padding:12px 0;text-align:right;font-weight:900;color:#B86816;'>{{REMAINING_BALANCE}}</td></tr></table></div><div style='background:#FFF7EB;border:1px solid #F4D7B5;border-radius:18px;padding:18px 20px;margin:26px 0;color:#7b6a58;font-size:14px;line-height:1.7;'><strong style='color:#2F241C;'>Booking Changes:</strong> If you need to reschedule or make changes to your booking, please contact <a href='mailto:marketing@morefun.com.au' style='color:#B86816;font-weight:800;text-decoration:none;'>marketing@morefun.com.au</a> with your booking ID. Booking changes must be requested at least 24 hours before the event and are subject to availability.</div><div style='background:#FFF7EB;border:1px solid #F4D7B5;border-radius:18px;padding:18px 20px;margin:26px 0;color:#7b6a58;font-size:14px;line-height:1.7;'><strong style='color:#2F241C;'>Please note:</strong> The $50 deposit is non-refundable. The remaining balance is payable on the day of your event.</div>{{MIN_GUEST_NOTE}}<div style='background:#FFFDF9;border:1px solid #E8DDCC;border-radius:18px;padding:22px;margin:26px 0;text-align:center;'><div style='display:inline-block;padding:8px 14px;border-radius:999px;background:#FFF3DF;color:#B86816;font-size:11px;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;line-height:1;'>Party Invitation</div><h2 style='margin:16px 0 10px;font-size:20px;line-height:1.2;color:#2F241C;'>Invite your guests</h2><p style='margin:0 auto 18px;color:#7b6a58;font-size:14px;line-height:1.6;max-width:460px;'>Download the KOKO birthday invitation, print it, then fill in the location, date and time for your party.</p><img src='https://cdn.jsdelivr.net/gh/MarketingMorefun/koko-booking@ec8c576/koko-birthday-invitation.png' alt='KOKO birthday invitation' width='260' style='width:260px;max-width:100%;height:auto;border-radius:14px;border:1px solid #E8DDCC;display:block;margin:0 auto 18px;'><div><a href='https://cdn.jsdelivr.net/gh/MarketingMorefun/koko-booking@ec8c576/koko-birthday-invitation.png' style='display:inline-block;background:#F28C28;color:#ffffff;text-decoration:none;font-size:14px;font-weight:900;padding:14px 18px;border-radius:12px;margin:4px;'>Download PNG</a><a href='https://cdn.jsdelivr.net/gh/MarketingMorefun/koko-booking@ec8c576/koko-birthday-invitation.pdf' style='display:inline-block;background:#FFF7EB;color:#B86816;text-decoration:none;font-size:14px;font-weight:900;padding:14px 18px;border-radius:12px;border:2px solid #F2B36F;margin:4px;'>Printable PDF</a></div><p style='margin:14px 0 0;color:#9A8B7C;font-size:12px;line-height:1.5;'>Tip: print at A4 for the best result.</p></div><div style='background:#FFFBF5;border:2px dashed #221D16;border-radius:18px;padding:20px 22px;margin:26px 0;text-align:center;'><div style='display:inline-block;padding:4px 12px;border-radius:999px;background:#F5D949;border:1px solid #221D16;font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#221D16;margin-bottom:12px;'>Refer a Friend</div><p style='margin:0 0 12px;color:#2F241C;font-size:14.5px;line-height:1.6;'>Share your code — when a friend books their first KOKO party or group event and uses it, they get $30 off, and you get $30 off your next visit.</p><div style='display:inline-block;padding:10px 20px;border:2px dashed #221D16;border-radius:12px;background:#ffffff;font-size:20px;font-weight:900;letter-spacing:0.05em;color:#221D16;margin-bottom:12px;'>{{REFERRAL_CODE}}</div><div><a href='{{REFERRAL_CARD_URL}}' style='display:inline-block;padding:10px 20px;border:2px solid #221D16;border-radius:14px;background:#F5D949;box-shadow:3px 3px 0 #221D16;font-weight:800;font-size:13px;color:#221D16;text-decoration:none;'>View &amp; print your code</a></div></div><div style='background:#ffffff;border:1px solid #E8DDCC;border-radius:18px;padding:22px;margin:26px 0;'><h2 style='margin:0 0 16px;font-size:18px;color:#2F241C;'>Customer Details</h2><table style='width:100%;border-collapse:collapse;font-size:15px;'><tr><td style='padding:9px 0;color:#7b6a58;'>Name</td><td style='padding:9px 0;text-align:right;font-weight:800;color:#2F241C;'>{{CUSTOMER_NAME}}</td></tr><tr><td style='padding:9px 0;color:#7b6a58;'>Email</td><td style='padding:9px 0;text-align:right;font-weight:800;color:#2F241C;'>{{CUSTOMER_EMAIL}}</td></tr><tr><td style='padding:9px 0;color:#7b6a58;'>Phone</td><td style='padding:9px 0;text-align:right;font-weight:800;color:#2F241C;'>{{CUSTOMER_PHONE}}</td></tr></table></div><p style='font-size:15px;line-height:1.7;color:#7b6a58;margin:24px 0 0;'>If you have any questions, please contact us with your booking ID.</p><p style='font-size:15px;line-height:1.7;color:#2F241C;margin:24px 0 0;'>See you soon!<br><strong>KOKO Amusement</strong></p></div><p style='text-align:center;color:#9A8B7C;font-size:12px;line-height:1.5;margin:18px 0 0;'>This is an automated booking confirmation email from KOKO Amusement.</p></div>"
+                }
+              
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{HEADING}}":$email_heading
+                }
+              
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{BOOKING_ID}}":$Booking.id
+                }
+              
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{LOCATION}}":$location_display
+                }
+              
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{BOOKING_DATE}}":$Booking.date
+                }
+              
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{BOOKING_TIME}}":$booking_time_display
+                }
+              
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{GUESTS}}":$Booking.guests
+                }
+              
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{PACKAGE}}":$package_display
+                }
+              
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{PACKAGE_TOTAL}}":$package_total_display
+                }
+              
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{ADDONS_TOTAL}}":$addons_total_display
+                }
+              
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{GRAND_TOTAL}}":$grand_total_display
+                }
+              
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{DEPOSIT_PAID}}":$deposit_paid_display
+                }
+              
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{REMAINING_BALANCE}}":$remaining_balance_display
+                }
+
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{MIN_GUEST_NOTE}}":$min_guest_note
+                }
+
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{REFERRAL_CODE}}":$referral_code
+                }
+
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{REFERRAL_CARD_URL}}":$referral_card_url
+                }
+
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{CUSTOMER_NAME}}":$Booking.customer_name
+                }
+              
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{CUSTOMER_EMAIL}}":$Booking.customer_email
+                }
+              
+                var $email_html {
+                  value = $email_html
+                    |replace:"{{CUSTOMER_PHONE}}":$Booking.customer_phone
+                }
+              
+                conditional {
+                  if ($Booking.customer_email == null || $Booking.customer_email == "") {
+                    var $error_message {
+                      value = "Missing customer email, booking updated but confirmation email not sent"
+                    }
+                  
+                    var $message {
+                      value = "Booking marked as deposit paid, but customer email is missing"
+                    }
+                  }
+                
+                  elseif ($Booking.confirmation_email_sent_at == null) {
+                    api.request {
+                      url = "https://api.resend.com/emails"
+                      method = "POST"
+                      params = {
+                        from   : "KOKO Amusement <booking@mail.morefun.com.au>"
+                        to     : $Booking.customer_email
+                        subject: $email_subject
+                        html   : $email_html
+                      }
+                    
+                      headers = []
+                        |push:"Authorization: Bearer re_YOUR_RESEND_API_KEY"
+                        |push:"Content-Type: application/json"
+                    } as $ResendEmail
+                  
+                    db.patch bookings {
+                      field_name = "id"
+                      field_value = $Booking.id
+                      data = {confirmation_email_sent_at: $now_ts}
+                    } as $Booking
+                  
+                    var $message {
+                      value = "Booking marked as deposit paid and confirmation email sent"
+                    }
+                  }
+                
+                  else {
+                    var $message {
+                      value = "Booking marked as deposit paid, confirmation email already sent"
+                    }
+                  }
+                }
+              }
+            
+              elseif ($event_type == "checkout.session.expired") {
+                conditional {
+                  if ($Booking.status != "deposit_paid") {
+                    db.patch bookings {
+                      field_name = "id"
+                      field_value = $Booking.id
+                      data = {status: "expired"}
+                    } as $Booking
+                  
+                    var $message {
+                      value = "Booking marked as expired"
+                    }
+                  }
+                
+                  else {
+                    var $message {
+                      value = "Booking already deposit paid, expired event ignored"
+                    }
+                  }
+                }
+              }
+            
+              else {
+                var $message {
+                  value = "Event ignored"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  response = {
+    received     : true
+    error_message: $error_message
+    message      : $message
+    event_type   : $event_type
+    booking_id   : $booking_id
+    booking      : $Booking
+    package      : $Package
+    resend_email : $ResendEmail
+  }
+}

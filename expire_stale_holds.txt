@@ -40,6 +40,23 @@ function expire_stale_holds {
           field_value = $hold.id
           data = {status: "expired"}
         } as $updated
+
+        // Release any credit this abandoned booking had reserved
+        // (CreateBooking/CreateGroupBooking flip a credit from
+        // "available" to "pending" the moment they decide to use it, so
+        // a second concurrent hold can't also grab it). Since this
+        // booking never paid, put it back to "available" so the customer
+        // can actually use it on a future booking instead of it being
+        // stranded on a dead hold forever.
+        conditional {
+          if (($hold.applied_credit_id|first_notnull:0) > 0) {
+            db.patch customer_credits {
+              field_name = "id"
+              field_value = $hold.applied_credit_id
+              data = {status: "available"}
+            } as $ReleasedCredit
+          }
+        }
       }
     }
   }

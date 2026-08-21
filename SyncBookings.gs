@@ -27,11 +27,15 @@ const HEADERS = [
   "birthday_child_gender",
   "average_age",
   "booking_notes",
+  "referral_code",
+  "discount_aud",
+  "discount_reason",
   "location_id",
   "party_room_id",
   "package_id",
   "calendar_event_id",
-  "calendar_sync_signature"
+  "calendar_sync_signature",
+  "new_booking_email_sent"
 ];
 
 // Matches Xano "Locations" table (id -> name)
@@ -179,11 +183,22 @@ function syncBookingsFromXano() {
       b.birthday_child_gender || "",
       b.average_age || "",
       b.booking_notes || "",
+      b.referral_code || "",
+      centsToAud(b.discount_cents),
+      b.discount_reason || "",
       b.location_id || "",
       b.party_room_id || "",
       b.package_id || "",
       existingBooking.calendarEventId || "",
-      existingBooking.calendarSyncSignature || ""
+      existingBooking.calendarSyncSignature || "",
+      // Grandfather bookings that already had a calendar event before this
+      // column existed — otherwise the very first sync after adding this
+      // feature would treat every old booking as "never emailed" and blast
+      // out a backlog of [NEW BOOKING] emails for events long past. Only
+      // bookings with no prior calendar event are left blank so they can
+      // trigger a real first-time send in upsertCalendarEventForRow.
+      existingBooking.newBookingEmailSent ||
+        (existingBooking.calendarEventId ? "grandfathered (pre-existing booking)" : "")
     ];
   });
 
@@ -210,6 +225,7 @@ function getExistingBookingMap(sheet) {
   const locationNameCol = headers.indexOf("location_name");
   const calendarEventIdCol = headers.indexOf("calendar_event_id");
   const calendarSyncSignatureCol = headers.indexOf("calendar_sync_signature");
+  const newBookingEmailSentCol = headers.indexOf("new_booking_email_sent");
   const statusCol = headers.indexOf("status");
 
   if (bookingIdCol === -1) {
@@ -227,6 +243,7 @@ function getExistingBookingMap(sheet) {
       locationName: locationNameCol === -1 ? "" : values[i][locationNameCol],
       calendarEventId: calendarEventIdCol === -1 ? "" : values[i][calendarEventIdCol],
       calendarSyncSignature: calendarSyncSignatureCol === -1 ? "" : values[i][calendarSyncSignatureCol],
+      newBookingEmailSent: newBookingEmailSentCol === -1 ? "" : values[i][newBookingEmailSentCol],
       status: statusCol === -1 ? "" : values[i][statusCol]
     };
   }
@@ -278,6 +295,7 @@ function syncCalendarEventsFromBookingMaster(previousBookingMap) {
       locationName: row[index.locationNameCol] || "",
       calendarEventId: row[index.calendarEventIdCol] || "",
       calendarSyncSignature: row[index.calendarSyncSignatureCol] || "",
+      newBookingEmailSent: index.newBookingEmailSentCol === -1 ? "" : row[index.newBookingEmailSentCol] || "",
       status: row[index.statusCol] || ""
     };
 
@@ -304,6 +322,11 @@ function syncCalendarEventsFromBookingMaster(previousBookingMap) {
     if (syncResult.calendarSyncSignature !== undefined) {
       sheet.getRange(i + 1, index.calendarSyncSignatureCol + 1).setValue(syncResult.calendarSyncSignature);
       currentBookingMap[bookingId].calendarSyncSignature = syncResult.calendarSyncSignature;
+    }
+
+    if (syncResult.newBookingEmailSent !== undefined && index.newBookingEmailSentCol !== -1) {
+      sheet.getRange(i + 1, index.newBookingEmailSentCol + 1).setValue(syncResult.newBookingEmailSent);
+      currentBookingMap[bookingId].newBookingEmailSent = syncResult.newBookingEmailSent;
     }
   }
 
@@ -340,6 +363,7 @@ function syncCalendarEventsFromRows(sheet, rows, previousBookingMap) {
       locationName: row[index.locationNameCol] || "",
       calendarEventId: row[index.calendarEventIdCol] || "",
       calendarSyncSignature: row[index.calendarSyncSignatureCol] || "",
+      newBookingEmailSent: index.newBookingEmailSentCol === -1 ? "" : row[index.newBookingEmailSentCol] || "",
       status: row[index.statusCol] || ""
     };
 
@@ -366,6 +390,11 @@ function syncCalendarEventsFromRows(sheet, rows, previousBookingMap) {
     if (syncResult.calendarSyncSignature !== undefined) {
       sheet.getRange(i + 2, index.calendarSyncSignatureCol + 1).setValue(syncResult.calendarSyncSignature);
       currentBookingMap[bookingId].calendarSyncSignature = syncResult.calendarSyncSignature;
+    }
+
+    if (syncResult.newBookingEmailSent !== undefined && index.newBookingEmailSentCol !== -1) {
+      sheet.getRange(i + 2, index.newBookingEmailSentCol + 1).setValue(syncResult.newBookingEmailSent);
+      currentBookingMap[bookingId].newBookingEmailSent = syncResult.newBookingEmailSent;
     }
   }
 
@@ -402,7 +431,8 @@ function buildHeaderIndex(headers) {
     partyRoomIdCol: headers.indexOf("party_room_id"),
     packageIdCol: headers.indexOf("package_id"),
     calendarEventIdCol: headers.indexOf("calendar_event_id"),
-    calendarSyncSignatureCol: headers.indexOf("calendar_sync_signature")
+    calendarSyncSignatureCol: headers.indexOf("calendar_sync_signature"),
+    newBookingEmailSentCol: headers.indexOf("new_booking_email_sent")
   };
 }
 
@@ -417,6 +447,8 @@ function upsertCalendarEventForRow(context) {
   const calendarId = STORE_CALENDAR_ID_MAP[locationName];
   const existingEventId = row[index.calendarEventIdCol] || previousBooking.calendarEventId || "";
   const existingSignature = row[index.calendarSyncSignatureCol] || previousBooking.calendarSyncSignature || "";
+  const existingEmailSent = (index.newBookingEmailSentCol === -1 ? "" : row[index.newBookingEmailSentCol]) ||
+    previousBooking.newBookingEmailSent || "";
   const previousLocationName = previousBooking.locationName || "";
 
   if (status !== "deposit paid") {
@@ -427,7 +459,8 @@ function upsertCalendarEventForRow(context) {
 
     return {
       calendarEventId: "",
-      calendarSyncSignature: ""
+      calendarSyncSignature: "",
+      newBookingEmailSent: existingEmailSent
     };
   }
 
@@ -435,7 +468,8 @@ function upsertCalendarEventForRow(context) {
     Logger.log("No calendar ID found for location: " + locationName);
     return {
       calendarEventId: existingEventId || "",
-      calendarSyncSignature: existingSignature || ""
+      calendarSyncSignature: existingSignature || "",
+      newBookingEmailSent: existingEmailSent
     };
   }
 
@@ -445,7 +479,8 @@ function upsertCalendarEventForRow(context) {
     Logger.log("Cannot access calendar for location: " + locationName + " / " + calendarId);
     return {
       calendarEventId: existingEventId || "",
-      calendarSyncSignature: existingSignature || ""
+      calendarSyncSignature: existingSignature || "",
+      newBookingEmailSent: existingEmailSent
     };
   }
 
@@ -457,9 +492,37 @@ function upsertCalendarEventForRow(context) {
     Logger.log("Missing date/start/end time for booking: " + bookingId);
     return {
       calendarEventId: existingEventId || "",
-      calendarSyncSignature: existingSignature || ""
+      calendarSyncSignature: existingSignature || "",
+      newBookingEmailSent: existingEmailSent
     };
   }
+
+  // From here on we have a real calendar and a real date/time, so this is
+  // also the right point to decide whether the [NEW BOOKING] email still
+  // needs to go out. It's tracked by its own new_booking_email_sent column,
+  // deliberately decoupled from whichever calendar branch (skip/update/
+  // create) runs below — so a booking whose calendar event succeeded but
+  // whose email failed to send (Gmail quota, bad address, etc.) keeps
+  // retrying on every future sync instead of being silently marked "done"
+  // forever just because the calendar half of the job worked.
+  const newBookingEmailSent = ensureNewBookingEmailSent(existingEmailSent, {
+    calendarId: calendarId,
+    bookingId: bookingId,
+    locationName: locationName,
+    partyRoom: row[index.partyRoomCol],
+    bookingDate: bookingDate,
+    startTime: startTime,
+    endTime: endTime,
+    customerName: row[index.customerNameCol],
+    customerPhone: row[index.customerPhoneCol],
+    customerEmail: row[index.customerEmailCol],
+    guestCount: row[index.guestsCol],
+    packageName: row[index.packageNameCol],
+    addons: row[index.addonsCol],
+    birthdayChildGender: row[index.birthdayChildGenderCol],
+    averageAge: row[index.averageAgeCol],
+    notes: row[index.notesCol]
+  });
 
   const startDateTime = buildSydneyDateTime(bookingDate, startTime);
   const endDateTime = buildSydneyDateTime(bookingDate, endTime);
@@ -549,7 +612,8 @@ function upsertCalendarEventForRow(context) {
     Logger.log("Skipping unchanged booking: " + bookingId);
     return {
       calendarEventId: event.getId(),
-      calendarSyncSignature: nextSignature
+      calendarSyncSignature: nextSignature,
+      newBookingEmailSent: newBookingEmailSent
     };
   }
 
@@ -564,7 +628,8 @@ function upsertCalendarEventForRow(context) {
     Logger.log("Updated event for booking: " + bookingId);
     return {
       calendarEventId: event.getId(),
-      calendarSyncSignature: nextSignature
+      calendarSyncSignature: nextSignature,
+      newBookingEmailSent: newBookingEmailSent
     };
   }
 
@@ -575,10 +640,79 @@ function upsertCalendarEventForRow(context) {
   ensurePopupReminder(event, 30);
 
   Logger.log("Created event for booking: " + bookingId);
+
   return {
     calendarEventId: event.getId(),
-    calendarSyncSignature: nextSignature
+    calendarSyncSignature: nextSignature,
+    newBookingEmailSent: newBookingEmailSent
   };
+}
+
+function buildNewBookingEmailSubject(info) {
+  return "[NEW BOOKING] #" + safeText(info.bookingId) +
+    " - " + safeText(info.locationName) +
+    " - " + safeText(info.bookingDate) + " " + safeText(info.startTime);
+}
+
+function buildNewBookingEmailBody(info) {
+  return [
+    "A new booking has been received (deposit paid):",
+    "",
+    "",
+    "Booking No: " + safeText(info.bookingId),
+    "Status: deposit paid",
+    "Location: " + safeText(info.locationName),
+    "Party Room: " + safeText(info.partyRoom),
+    "Date: " + safeText(info.bookingDate),
+    "Time: " + safeText(info.startTime) + " - " + safeText(info.endTime),
+    "",
+    "",
+    "Customer: " + safeText(info.customerName),
+    "Phone: " + safeText(info.customerPhone),
+    "Email: " + safeText(info.customerEmail),
+    "Guests: " + safeText(info.guestCount),
+    "Package: " + safeText(info.packageName),
+    "Add-ons: " + safeText(info.addons),
+    "Birthday Child Gender: " + safeText(info.birthdayChildGender),
+    "Average Age: " + safeText(info.averageAge),
+    "Notes: " + safeText(info.notes)
+  ].join("\n");
+}
+
+function ensureNewBookingEmailSent(existingValue, info) {
+  // Already sent (or grandfathered as a pre-existing booking) — nothing to
+  // do. This is the retry gate: leaving existingValue blank on a failed
+  // send means the next sync run tries again instead of giving up forever.
+  if (existingValue) {
+    return existingValue;
+  }
+
+  const sent = sendNewBookingEmail(info);
+  return sent ? formatDateTimeFromTimestamp(Date.now()) : "";
+}
+
+function sendNewBookingEmail(info) {
+  // Same per-location Gmail address already used for the calendar sync
+  // (STORE_CALENDAR_ID_MAP) — whichever store's calendar an event goes
+  // into is also whichever store's inbox gets the notification email.
+  if (!info.calendarId) {
+    Logger.log("Skipping new-booking email, no store email configured for location: " + info.locationName);
+    return false;
+  }
+
+  try {
+    MailApp.sendEmail({
+      to: info.calendarId,
+      subject: buildNewBookingEmailSubject(info),
+      body: buildNewBookingEmailBody(info),
+      name: "KOKO Booking Bot"
+    });
+    Logger.log("Sent new-booking email for booking " + info.bookingId + " to " + info.calendarId);
+    return true;
+  } catch (err) {
+    Logger.log("Failed to send new-booking email for booking " + info.bookingId + ": " + err);
+    return false;
+  }
 }
 
 function deleteRemovedBookingEvents(previousBookingMap, currentBookingMap) {
@@ -928,4 +1062,98 @@ function testCalendarAccess() {
     Logger.log("Calendar ID: " + calendar.getId());
     Logger.log("--------------------");
   });
+}
+
+// ============================================================
+// One-time manual catch-up — NOT attached to any trigger.
+//
+// Run this once by hand (Apps Script editor → pick
+// "backfillMissingNewBookingEmails" from the function dropdown → Run)
+// after deploying the [NEW BOOKING] email feature, to send it for
+// bookings that are CURRENTLY still "deposit paid" but got skipped or
+// grandfathered because their calendar event already existed before this
+// column was added.
+//
+// Deliberately scoped to status === "deposit paid" only — bookings that
+// have since expired/cancelled/moved on are past and moot, so this will
+// never mass-email the store about old, no-longer-relevant bookings, no
+// matter how far back the sheet goes. Safe to run more than once: a row
+// with a real (non-"grandfathered") timestamp already in
+// new_booking_email_sent is left alone.
+// ============================================================
+function backfillMissingNewBookingEmails() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(MASTER_SHEET_NAME);
+
+  if (!sheet) {
+    throw new Error("Sheet not found: " + MASTER_SHEET_NAME);
+  }
+
+  const range = sheet.getDataRange();
+  const displayValues = range.getDisplayValues();
+
+  if (displayValues.length < 2) {
+    Logger.log("No bookings in sheet.");
+    return;
+  }
+
+  const headers = displayValues[0];
+  const index = buildHeaderIndex(headers);
+
+  if (index.newBookingEmailSentCol === -1) {
+    throw new Error("Missing column: new_booking_email_sent. Run syncBookingsFromXano first so the column exists.");
+  }
+
+  let sentCount = 0;
+  let skippedCount = 0;
+
+  for (let i = 1; i < displayValues.length; i++) {
+    const row = displayValues[i];
+    const status = row[index.statusCol];
+
+    if (status !== "deposit paid") {
+      continue;
+    }
+
+    const alreadySent = row[index.newBookingEmailSentCol];
+    const isRealSend = alreadySent && alreadySent.indexOf("grandfathered") === -1;
+
+    if (isRealSend) {
+      skippedCount++;
+      continue;
+    }
+
+    const bookingId = row[index.bookingIdCol];
+    const locationName = row[index.locationNameCol];
+    const calendarId = STORE_CALENDAR_ID_MAP[locationName];
+
+    const sent = sendNewBookingEmail({
+      calendarId: calendarId,
+      bookingId: bookingId,
+      locationName: locationName,
+      partyRoom: row[index.partyRoomCol],
+      bookingDate: row[index.dateCol],
+      startTime: row[index.startTimeCol],
+      endTime: row[index.endTimeCol],
+      customerName: row[index.customerNameCol],
+      customerPhone: row[index.customerPhoneCol],
+      customerEmail: row[index.customerEmailCol],
+      guestCount: row[index.guestsCol],
+      packageName: row[index.packageNameCol],
+      addons: row[index.addonsCol],
+      birthdayChildGender: row[index.birthdayChildGenderCol],
+      averageAge: row[index.averageAgeCol],
+      notes: row[index.notesCol]
+    });
+
+    if (sent) {
+      sheet.getRange(i + 1, index.newBookingEmailSentCol + 1).setValue(formatDateTimeFromTimestamp(Date.now()));
+      sentCount++;
+      Logger.log("Backfilled new-booking email for booking " + bookingId);
+    } else {
+      Logger.log("Backfill FAILED to send for booking " + bookingId + " — left as-is, run this function again later to retry.");
+    }
+  }
+
+  Logger.log("Backfill complete. Sent " + sentCount + " email(s), skipped " + skippedCount + " already-sent booking(s).");
 }

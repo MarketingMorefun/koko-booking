@@ -19,6 +19,7 @@ query CreateGroupBooking verb=POST {
         text customer_phone
         text customer_email
         text booking_notes?
+        text referral_code?
       }
     }
   }
@@ -77,6 +78,36 @@ query CreateGroupBooking verb=POST {
 
     var $hold_expires_at_ts {
       value = $now_ts + 900000
+    }
+
+    // ---- Referral / repeat-customer $30 discount ----
+    // Vars only — the actual lookup happens later, right before db.add,
+    // once every validation check has passed. See the comment down there
+    // for why (in short: reserving a credit before we're sure a booking
+    // will actually be created would strand it forever with no booking
+    // row around to ever release it back).
+    var $customer_email_normalised {
+      value = $input.payload.customer_email|trim|lower
+    }
+
+    var $discount_cents {
+      value = 0
+    }
+
+    var $discount_reason {
+      value = ""
+    }
+
+    var $applied_credit_id {
+      value = 0
+    }
+
+    var $referral_code_used {
+      value = ""
+    }
+
+    var $AvailableCredit {
+      value = null
     }
 
     // ============================================================
@@ -399,10 +430,6 @@ query CreateGroupBooking verb=POST {
         var $grand_total_cents {
           value = $package_total_cents + $addons_total_cents
         }
-
-        var $balance_due_cents {
-          value = $grand_total_cents
-        }
       }
     }
 
@@ -410,6 +437,80 @@ query CreateGroupBooking verb=POST {
       if ($error_message == null && $grand_total_cents <= 0) {
         var $error_message {
           value = "Booking total is invalid"
+        }
+      }
+    }
+
+    // ============================================================
+    // 8.5) 推荐 / 复购折扣 —— 就放在这里(所有校验都通过之后,建单之前)
+    // 而不是放在最前面,是因为一旦占用一张 credit(标成 pending),就必须
+    // 保证接下来一定会建出一条 booking 记录,不然这张 credit 占了却没有
+    // booking 能在 24 小时清理时把它放回来,会永久卡死。
+    // 占用改成 pending(不是 available)之后,同一个人同时开两个 hold
+    // 就不会再抢到同一张 credit——第二个 hold 查询时已经看不到它了。
+    // ============================================================
+    conditional {
+      if ($error_message == null) {
+        db.query customer_credits {
+          where = $db.customer_credits.customer_email == $customer_email_normalised && $db.customer_credits.status == "available"
+          return = {type: "single"}
+        } as $AvailableCredit
+
+        conditional {
+          if ($AvailableCredit != null) {
+            var $discount_cents {
+              value = 3000
+            }
+
+            var $discount_reason {
+              value = "repeat_customer"
+            }
+
+            var $applied_credit_id {
+              value = $AvailableCredit.id
+            }
+
+            db.patch customer_credits {
+              field_name = "id"
+              field_value = $AvailableCredit.id
+              data = {status: "pending"}
+            } as $ReservedCredit
+          }
+
+          elseif ($input.payload.referral_code != null && $input.payload.referral_code != "") {
+            db.query bookings {
+              where = $db.bookings.referral_code == $input.payload.referral_code && ($db.bookings.status == "deposit_paid" || $db.bookings.status == "paid")
+              return = {type: "single"}
+            } as $ReferringBooking
+
+            conditional {
+              if ($ReferringBooking != null && ($ReferringBooking.customer_email|trim|lower) != $customer_email_normalised) {
+                var $discount_cents {
+                  value = 3000
+                }
+
+                var $discount_reason {
+                  value = "referral"
+                }
+
+                var $referral_code_used {
+                  value = $input.payload.referral_code
+                }
+              }
+            }
+          }
+        }
+
+        var $balance_due_cents {
+          value = $grand_total_cents - $discount_cents
+        }
+
+        conditional {
+          if ($balance_due_cents < 0) {
+            var $balance_due_cents {
+              value = 0
+            }
+          }
         }
       }
     }
@@ -439,6 +540,11 @@ query CreateGroupBooking verb=POST {
             addons_total_cents        : $addons_total_cents
             grand_total_cents         : $grand_total_cents
             balance_due_cents         : $balance_due_cents
+            discount_cents            : $discount_cents
+            discount_reason           : $discount_reason
+            applied_credit_id         : $applied_credit_id
+            referral_code_used        : $referral_code_used
+            referral_code             : ""
             deposit_paid_cents        : 0
             payment_url               : ""
             stripe_session_id         : ""
@@ -458,6 +564,8 @@ query CreateGroupBooking verb=POST {
     package_total_cents: $package_total_cents
     addons_total_cents : $addons_total_cents
     grand_total_cents  : $grand_total_cents
+    discount_cents     : $discount_cents
+    discount_reason    : $discount_reason
     location           : $Location
     package            : $Package
     package_price      : $PackagePrice

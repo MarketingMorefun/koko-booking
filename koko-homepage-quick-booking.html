@@ -1,0 +1,565 @@
+<!-- ===== KOKO 主页 完整脚本（把 Custom Code 里的内容整个替换成这一份）=====
+   包含：
+   A) 核心业务逻辑：读取 location/date/guests，校验，点击 Check availability 后跳转
+   B) 人数框加减号 stepper
+   C) 日期框 72 小时限制（双保险，跟 A 块自带的日期限制共存，互不冲突）
+   ★ Webflow 的 Custom Code 框是整体替换的，不是叠加的——
+     以后要改这个页面的任何一块，请在这份完整文件基础上改，整份重新粘贴，
+     不要只贴某一小段进去。
+   ★ 改完记得 Publish，Designer 预览看不到 <script> 效果。
+   ★ 2026-08-13 修复：生日预订页 slug 从 /booking/birthday-party-koko 改成了
+     /booking/birthday-party，旧 slug 会被 Webflow 301 到新 slug，但重定向
+     会把 URL 上的 location/date/guests/auto_check 参数全部丢掉，导致跳转到
+     的页面填不上预填内容。这里把 TARGET_PAGE 直接改成新 slug，跳过那次
+     会丢参数的重定向。如果以后又改了 booking 页面的 slug，记得同步更新
+     这一行，并且优先直接指向最终 slug，别指望走 Webflow 的重定向兜底。 -->
+
+<style>
+  .koko-guest-stepper{
+    position:relative;
+    width:100%;
+  }
+  .koko-guest-stepper input,
+  .koko-guest-stepper input#quickGuests,
+  .koko-guest-stepper input.koko-guest-input{
+    padding-right:128px !important;
+    -moz-appearance:textfield;
+    position:relative;
+    z-index:1;
+  }
+  .koko-guest-stepper input::-webkit-outer-spin-button,
+  .koko-guest-stepper input::-webkit-inner-spin-button{
+    -webkit-appearance:none;
+    margin:0;
+  }
+  .koko-guest-stepper-controls{
+    position:absolute;
+    right:10px;
+    top:50%;
+    transform:translateY(-50%);
+    display:flex;
+    align-items:center;
+    gap:6px;
+    pointer-events:auto;
+    z-index:5;
+  }
+  .koko-guest-stepper-btn{
+    width:46px;
+    height:46px;
+    border-radius:12px;
+    border:2px solid #E8DDCC;
+    background:#fff;
+    color:#2F241C;
+    font-size:24px;
+    font-weight:800;
+    line-height:1;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:0;
+    font-family:'Maven Pro',Arial,sans-serif;
+    position:relative;
+    z-index:6;
+    touch-action:manipulation;
+    box-shadow:0 2px 6px rgba(0,0,0,.08);
+    transition:transform .1s ease, box-shadow .1s ease;
+  }
+  .koko-guest-stepper-btn:active{
+    transform:scale(.93);
+    box-shadow:none;
+  }
+  .koko-guest-stepper-btn.is-plus{
+    border-color:#F28C28;
+    background:#FFF7EB;
+    color:#B86816;
+    box-shadow:0 2px 6px rgba(242,140,40,.18);
+  }
+</style>
+
+<!-- ============================================================
+     A) 核心业务逻辑：校验 + 跳转
+     ============================================================ -->
+<script>
+(function () {
+  "use strict";
+
+  var MIN_ADVANCE_HOURS = 72;
+  var MIN_PARTY_SIZE    = 10;
+  var MAX_MONTHS_AHEAD  = 12;
+  var TARGET_PAGE = "/booking/birthday-party";   // ← 确认这是真实路径
+  var MIN_ADVANCE_MS = MIN_ADVANCE_HOURS * 3600 * 1000;
+
+  function fmt(d) {
+    return d.getFullYear() + "-" +
+           String(d.getMonth() + 1).padStart(2, "0") + "-" +
+           String(d.getDate()).padStart(2, "0");
+  }
+  function minDateStr() { return fmt(new Date(Date.now() + MIN_ADVANCE_MS)); }
+  function maxDateStr() {
+    var d = new Date();
+    d.setMonth(d.getMonth() + MAX_MONTHS_AHEAD);
+    return fmt(d);
+  }
+  function normalizeDate(v) {
+    if (!v) return "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+    if (/^\d{4}\/\d{2}\/\d{2}$/.test(v)) return v.replace(/\//g, "-");
+    var m = v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    return m ? (m[3] + "-" + m[2] + "-" + m[1]) : v;
+  }
+  function val(node) { return node ? String(node.value || "").trim() : ""; }
+
+  var BTN = null;
+  function isVisible(n) {
+    return n.offsetParent !== null || (n.getClientRects && n.getClientRects().length > 0);
+  }
+  function el(id) {
+    var all = document.querySelectorAll("#" + id + ', [name="' + id + '"]');
+    if (!all.length) return null;
+    if (all.length === 1) return all[0];
+    if (BTN) {
+      var scope = BTN.closest("form") || BTN.closest(".w-form") ||
+                  BTN.closest("[data-koko-form]") || BTN.parentElement;
+      for (var lv = 0; scope && lv < 5; lv++) {
+        for (var i = 0; i < all.length; i++) {
+          if (scope.contains(all[i])) return all[i];
+        }
+        scope = scope.parentElement;
+      }
+    }
+    for (var j = 0; j < all.length; j++) {
+      if (isVisible(all[j])) return all[j];
+    }
+    return all[0];
+  }
+
+  function msgBox() {
+    var box = document.getElementById("kokoQuickMsg");
+    if (box) return box;
+    if (!BTN) return null;
+    box = document.createElement("div");
+    box.id = "kokoQuickMsg";
+    box.style.cssText = [
+      "display:none",
+      "margin-top:10px",
+      "padding:10px 14px",
+      "border-radius:12px",
+      "background:#FDF0E3",
+      "border:1px solid #E8C9A6",
+      "color:#A85B1E",
+      "font-size:13px",
+      "font-family:'Maven Pro', sans-serif",
+      "line-height:1.4",
+      "width:100%",
+      "box-sizing:border-box"
+    ].join(";");
+    var anchor = BTN.parentElement || BTN;
+    anchor.appendChild(box);
+    return box;
+  }
+  function showMsg(text) {
+    var box = msgBox();
+    if (!box) { console.warn("[KOKO] " + text); return; }
+    box.textContent = text;
+    box.style.display = "block";
+    clearTimeout(box._t);
+    box._t = setTimeout(function () { box.style.display = "none"; }, 5000);
+  }
+  function clearMsg() {
+    var box = document.getElementById("kokoQuickMsg");
+    if (box) box.style.display = "none";
+  }
+
+  function setupDate() {
+    var d = el("quickDate");
+    if (!d) { console.warn("[KOKO] 找不到 quickDate"); return; }
+
+    function apply() {
+      var min = minDateStr();
+      d.setAttribute("min", min);
+      d.setAttribute("max", maxDateStr());
+      if (!d.value || d.value < min) d.value = min;
+    }
+    apply();
+    setInterval(apply, 5 * 60 * 1000);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) apply();
+    });
+
+    d.style.cursor = "pointer";
+    d.addEventListener("change", function () {
+      var min = minDateStr();
+      if (!d.value || d.value < min) d.value = min;
+      clearMsg();
+    });
+
+    function open() {
+      try {
+        d.focus();
+        if (typeof d.showPicker === "function") d.showPicker();
+      } catch (err) { d.focus(); }
+    }
+    d.addEventListener("click", function (e) { e.stopPropagation(); open(); });
+
+    var wrap = document.getElementById("bookingDateWrap");
+    if (wrap && wrap.contains(d)) {
+      wrap.style.cursor = "pointer";
+      wrap.addEventListener("click", open);
+    }
+  }
+
+  function setupGuests() {
+    var g = el("quickGuests");
+    if (!g) { console.warn("[KOKO] 找不到 quickGuests"); return; }
+    g.type = "number";
+    g.min  = String(MIN_PARTY_SIZE);
+    g.step = "1";
+    g.addEventListener("input", clearMsg);
+    g.addEventListener("blur", function () {
+      if (!g.value) return;
+      var n = parseInt(g.value, 10);
+      if (!Number.isFinite(n) || n < MIN_PARTY_SIZE) g.value = String(MIN_PARTY_SIZE);
+    });
+  }
+
+  function setupLocation() {
+    var l = el("quickLocation");
+    if (l) l.addEventListener("change", clearMsg);
+  }
+
+  function targetUrl() {
+    var t = BTN && (BTN.getAttribute("data-party-url") || BTN.dataset.kokoHref || "");
+    if (!t || t === "#" || t.indexOf("javascript:") === 0) t = TARGET_PAGE;
+    return t;
+  }
+
+  function submit(e) {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+
+    var locEl   = el("quickLocation");
+    var dateEl  = el("quickDate");
+    var guestEl = el("quickGuests");
+
+    if (dateEl) {
+      var min = minDateStr();
+      if (!dateEl.value || dateEl.value < min) dateEl.value = min;
+    }
+
+    var loc    = val(locEl);
+    var date   = normalizeDate(val(dateEl));
+    var guests = val(guestEl);
+
+    console.log("[KOKO] 读到:", { location: loc, date: date, guests: guests });
+
+    if (!loc) {
+      showMsg("Please select a location.");
+      if (locEl) locEl.focus();
+      return false;
+    }
+    if (!guests || Number(guests) < MIN_PARTY_SIZE) {
+      showMsg("Party bookings require a minimum of " + MIN_PARTY_SIZE + " guests.");
+      if (guestEl) guestEl.focus();
+      return false;
+    }
+
+    clearMsg();
+
+    var url = new URL(targetUrl(), window.location.origin);
+    url.searchParams.set("location",     loc);
+    url.searchParams.set("date",         date);
+    url.searchParams.set("guests",       guests);
+    url.searchParams.set("auto_check",   "1");
+    url.searchParams.set("booking_type", "birthday");
+
+    var href = url.origin === window.location.origin
+      ? url.pathname + url.search + url.hash
+      : url.toString();
+
+    console.log("[KOKO] 跳转 →", href);
+    window.location.href = href;
+    return false;
+  }
+
+  function bindButton() {
+    var btn = document.getElementById("quickCheckAvailabilityBtn") ||
+              document.querySelector("[data-koko-action='quick-book-now']");
+    if (!btn) return false;
+    if (btn.dataset.kokoBound) return true;
+
+    btn.dataset.kokoBound = "1";
+    BTN = btn;
+
+    if (btn.tagName === "BUTTON" ||
+        (btn.matches && btn.matches("input[type='submit'], input[type='button']"))) {
+      btn.type = "button";
+    }
+    if (btn.tagName === "A") {
+      btn.dataset.kokoHref = btn.getAttribute("href") || "";
+      btn.setAttribute("href", "javascript:void(0)");
+    }
+
+    btn.addEventListener("click", submit, true);
+
+    var form = btn.closest("form");
+    if (form && !form.dataset.kokoBound) {
+      form.dataset.kokoBound = "1";
+      form.addEventListener("submit", submit, true);
+    }
+
+    console.log("[KOKO] 已绑定按钮");
+    return true;
+  }
+
+  function init() {
+    if (!bindButton()) {
+      console.warn("[KOKO] 暂未找到按钮，监听 DOM 变化");
+      var mo = new MutationObserver(function () {
+        if (bindButton()) {
+          mo.disconnect();
+          setupDate(); setupGuests(); setupLocation();
+        }
+      });
+      mo.observe(document.body, { childList: true, subtree: true });
+      return;
+    }
+
+    setupDate();
+    setupGuests();
+    setupLocation();
+
+    ["quickDate", "quickLocation", "quickGuests"].forEach(function (id) {
+      var n = document.querySelectorAll("#" + id).length;
+      if (n > 1) console.warn("[KOKO] ⚠ #" + id + " 重复 " + n + " 次，建议在 Webflow 里改掉");
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
+</script>
+
+<!-- ============================================================
+     B) 人数框加减号 stepper
+     ============================================================ -->
+<script>
+(function(){
+  var MIN = 10;
+  var ID  = "quickGuests";
+
+  function isVisible(n){
+    return n.offsetParent !== null || (n.getClientRects && n.getClientRects().length > 0);
+  }
+
+  function pickGuestField(){
+    var all = document.querySelectorAll("#" + ID + ', [name="' + ID + '"]');
+    if(!all.length) return null;
+    if(all.length === 1) return all[0];
+
+    var btn = document.getElementById("quickCheckAvailabilityBtn") ||
+              document.querySelector("[data-koko-action='quick-book-now']");
+    if(btn){
+      var scope = btn.closest("form") || btn.closest(".w-form") ||
+                  btn.closest("[data-koko-form]") || btn.parentElement;
+      for(var lv=0; scope && lv<5; lv++){
+        for(var i=0;i<all.length;i++){ if(scope.contains(all[i])) return all[i]; }
+        scope = scope.parentElement;
+      }
+    }
+    for(var j=0;j<all.length;j++){ if(isVisible(all[j])) return all[j]; }
+    return all[0];
+  }
+
+  function fire(el){
+    el.dispatchEvent(new Event("input",  { bubbles:true }));
+    el.dispatchEvent(new Event("change", { bubbles:true }));
+  }
+
+  function enhance(){
+    var g = pickGuestField();
+    if(!g) return;
+
+    if(g.dataset.kokoStepperDone === "1" &&
+       g.parentElement && g.parentElement.classList.contains("koko-guest-stepper") &&
+       g.parentElement.querySelector(".koko-guest-stepper-btn")) return;
+
+    if(g.type !== "number") g.type = "number";
+    if(!g.min) g.min = String(MIN);
+    if(!g.step) g.step = "1";
+    var cur = parseInt(g.value, 10);
+    if(!g.value || !Number.isFinite(cur)) g.value = String(MIN);
+    g.classList.add("koko-guest-input");
+
+    var wrapper = g.parentElement;
+    if(!wrapper || !wrapper.classList.contains("koko-guest-stepper")){
+      wrapper = document.createElement("div");
+      wrapper.className = "koko-guest-stepper";
+      g.parentElement.insertBefore(wrapper, g);
+      wrapper.appendChild(g);
+    }
+
+    if(!wrapper.querySelector(".koko-guest-stepper-controls")){
+      var controls = document.createElement("div");
+      controls.className = "koko-guest-stepper-controls";
+
+      var minusBtn = document.createElement("button");
+      minusBtn.type = "button";
+      minusBtn.className = "koko-guest-stepper-btn";
+      minusBtn.textContent = "−";
+
+      var plusBtn = document.createElement("button");
+      plusBtn.type = "button";
+      plusBtn.className = "koko-guest-stepper-btn is-plus";
+      plusBtn.textContent = "+";
+
+      minusBtn.addEventListener("click", function(e){
+        e.preventDefault(); e.stopPropagation();
+        var n = parseInt(g.value || String(MIN), 10);
+        if(!Number.isFinite(n)) n = MIN;
+        g.value = String(Math.max(MIN, n - 1));
+        fire(g);
+      });
+      plusBtn.addEventListener("click", function(e){
+        e.preventDefault(); e.stopPropagation();
+        var n = parseInt(g.value || String(MIN), 10);
+        if(!Number.isFinite(n)) n = MIN;
+        g.value = String(n + 1);
+        fire(g);
+      });
+
+      controls.appendChild(minusBtn);
+      controls.appendChild(plusBtn);
+      wrapper.appendChild(controls);
+    }
+
+    g.dataset.kokoStepperDone = "1";
+  }
+
+  if(document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", enhance);
+  } else {
+    enhance();
+  }
+  [100, 400, 900, 1500, 2500, 4000].forEach(function(t){ setTimeout(enhance, t); });
+
+  if(window.MutationObserver){
+    var scheduled = false;
+    var raf = window.requestAnimationFrame || function(fn){ return setTimeout(fn, 16); };
+    var mo = new MutationObserver(function(){
+      if(scheduled) return;
+      scheduled = true;
+      raf(function(){ scheduled = false; enhance(); });
+    });
+    mo.observe(document.documentElement, { childList:true, subtree:true });
+  }
+})();
+</script>
+
+<!-- ============================================================
+     C) 日期框 72 小时限制（双保险，跟 A 块自带的 setupDate 共存）
+     ============================================================ -->
+<script>
+(function(){
+  var MIN_ADVANCE_HOURS = 72;
+  var MIN_ADVANCE_MS = MIN_ADVANCE_HOURS * 60 * 60 * 1000;
+  var MAX_MONTHS_AHEAD = 12;
+
+  var ID = "quickDate";
+  var WRAP_ID = "bookingDateWrap";
+
+  function pad(n){ return String(n).padStart(2, "0"); }
+
+  function minDateStr(){
+    var d = new Date(Date.now() + MIN_ADVANCE_MS);
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  }
+  function maxDateStr(){
+    var d = new Date();
+    d.setMonth(d.getMonth() + MAX_MONTHS_AHEAD);
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  }
+  function isBeforeMin(value){
+    if(!value) return false;
+    return value < minDateStr();
+  }
+
+  function openPicker(input){
+    input.setAttribute("min", minDateStr());
+    input.setAttribute("max", maxDateStr());
+    try{
+      input.focus();
+      if(typeof input.showPicker === "function") input.showPicker();
+    }catch(e){
+      input.focus();
+    }
+  }
+
+  function correct(input){
+    if(isBeforeMin(input.value)){
+      input.value = minDateStr();
+      input.dispatchEvent(new Event("change", { bubbles:true }));
+      input.dispatchEvent(new Event("input", { bubbles:true }));
+    }
+  }
+
+  function bind(){
+    var input = document.getElementById(ID);
+    if(!input) return;
+    if(input.dataset.kokoDate72Done !== "1"){
+      if(input.type !== "date") input.type = "date";
+      input.setAttribute("min", minDateStr());
+      input.setAttribute("max", maxDateStr());
+      input.style.cursor = "pointer";
+
+      input.addEventListener("click", function(e){
+        e.stopPropagation();
+        openPicker(input);
+      });
+      input.addEventListener("focus", function(){
+        input.setAttribute("min", minDateStr());
+        input.setAttribute("max", maxDateStr());
+      });
+      input.addEventListener("change", function(){ correct(input); });
+      input.addEventListener("blur", function(){ correct(input); });
+
+      input.dataset.kokoDate72Done = "1";
+    } else {
+      input.setAttribute("min", minDateStr());
+      input.setAttribute("max", maxDateStr());
+    }
+
+    var wrap = document.getElementById(WRAP_ID);
+    if(wrap && wrap !== input && wrap.dataset.kokoDate72WrapDone !== "1"){
+      wrap.style.cursor = "pointer";
+      wrap.addEventListener("click", function(){ openPicker(input); });
+      wrap.dataset.kokoDate72WrapDone = "1";
+    }
+  }
+
+  if(document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", bind);
+  } else {
+    bind();
+  }
+  [100, 400, 900, 1500, 2500, 4000].forEach(function(t){ setTimeout(bind, t); });
+
+  setInterval(bind, 5 * 60 * 1000);
+  document.addEventListener("visibilitychange", function(){
+    if(!document.hidden) bind();
+  });
+
+  if(window.MutationObserver){
+    var scheduled = false;
+    var raf = window.requestAnimationFrame || function(fn){ return setTimeout(fn, 16); };
+    var mo = new MutationObserver(function(){
+      if(scheduled) return;
+      scheduled = true;
+      raf(function(){ scheduled = false; bind(); });
+    });
+    mo.observe(document.documentElement, { childList:true, subtree:true });
+  }
+})();
+</script>

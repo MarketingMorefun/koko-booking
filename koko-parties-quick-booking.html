@@ -1,0 +1,583 @@
+<!-- ===== KOKO 快速预约页面 完整脚本（把 Custom Code 里的内容整个替换成这一份）=====
+   页面：/parties（Page settings → Custom code → Footer）
+   包含：
+   A) 核心业务逻辑：tab 切换 / Check availability 点击校验 / 跳转到预约页
+   B) 人数框加减号 stepper（quickGuests 生日 / groupQuickGuests 团体）
+   C) 日期框 72 小时限制（quickDate 生日 / groupQuickDate 团体）
+   ★ Webflow 的 Custom Code 框是整体替换的，不是叠加的——
+     以后要改任何一块，请在这份完整文件基础上改，不要只贴某一小段进去，
+     否则会把其他功能一起覆盖掉（这次"Check 不跳转"就是这么发生的）。
+   ★ 改完记得 Publish，Designer 预览看不到 <script> 效果。
+   ★ 2026-08-13 修复：生日预订页 slug 从 /booking/birthday-party-koko 改成了
+     /booking/birthday-party，旧 slug 会被 Webflow 301 到新 slug，但重定向
+     会把 URL 上的 location/date/guests/auto_check 参数全部丢掉，导致跳转到
+     的页面填不上预填内容。这里直接把 BOOKING_URLS.birthday 改成新 slug，
+     跳过那次会丢参数的重定向。如果以后又改了 booking 页面的 slug，记得
+     同步更新下面这两行，并且优先直接指向最终 slug，别指望走 Webflow 的
+     重定向兜底。 -->
+
+<style>
+  /* ---------- 人数 stepper 样式 ---------- */
+  .koko-guest-stepper{
+    position:relative;
+    width:100%;
+  }
+  .koko-guest-stepper input,
+  .koko-guest-stepper input#quickGuests,
+  .koko-guest-stepper input#groupQuickGuests,
+  .koko-guest-stepper input.koko-guest-input{
+    padding-right:128px !important;
+    -moz-appearance:textfield;
+    position:relative;
+    z-index:1;
+  }
+  .koko-guest-stepper input::-webkit-outer-spin-button,
+  .koko-guest-stepper input::-webkit-inner-spin-button{
+    -webkit-appearance:none;
+    margin:0;
+  }
+  .koko-guest-stepper-controls{
+    position:absolute;
+    right:10px;
+    top:50%;
+    transform:translateY(-50%);
+    display:flex;
+    align-items:center;
+    gap:6px;
+    pointer-events:auto;
+    z-index:5;
+  }
+  .koko-guest-stepper-btn{
+    width:46px;
+    height:46px;
+    border-radius:12px;
+    border:2px solid #E8DDCC;
+    background:#fff;
+    color:#2F241C;
+    font-size:24px;
+    font-weight:800;
+    line-height:1;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:0;
+    font-family:'Maven Pro',Arial,sans-serif;
+    position:relative;
+    z-index:6;
+    touch-action:manipulation;
+    box-shadow:0 2px 6px rgba(0,0,0,.08);
+    transition:transform .1s ease, box-shadow .1s ease;
+  }
+  .koko-guest-stepper-btn:active{
+    transform:scale(.93);
+    box-shadow:none;
+  }
+  .koko-guest-stepper-btn.is-plus{
+    border-color:#F28C28;
+    background:#FFF7EB;
+    color:#B86816;
+    box-shadow:0 2px 6px rgba(242,140,40,.18);
+  }
+  .koko-guest-stepper-btn.is-disabled,
+  .koko-guest-stepper-btn:disabled{
+    opacity:.38;
+    cursor:not-allowed;
+  }
+
+  #birthdayTabBtn,
+  #groupTabBtn {
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  #birthdayTabBtn.is-active-booking-tab,
+  #groupTabBtn.is-active-booking-tab {
+    background: #FFF7EB !important;
+    border-color: #F28C28 !important;
+    box-shadow: 0 18px 45px rgba(242, 140, 40, 0.14) !important;
+  }
+</style>
+
+<!-- ============================================================
+     A) 核心业务逻辑：tab 切换 / Check availability 校验 / 跳转
+     ============================================================ -->
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const BOOKING_URLS = {
+    birthday: "/booking/birthday-party",
+    group: "/booking/group"
+  };
+
+  const MIN_ADVANCE_HOURS = 72;
+  const MIN_ADVANCE_MS = MIN_ADVANCE_HOURS * 60 * 60 * 1000;
+
+  let activeBookingType = "birthday";
+
+  function findField() {
+    const ids = Array.prototype.slice.call(arguments);
+
+    for (let i = 0; i < ids.length; i += 1) {
+      const id = ids[i];
+      if (!id) continue;
+
+      const el =
+        document.getElementById(id) ||
+        document.querySelector(`[name="${id}"]`);
+
+      if (!el) continue;
+
+      if (el.matches && el.matches("input, select, textarea")) {
+        return el;
+      }
+
+      const nested = el.querySelector("input, select, textarea");
+      if (nested) return nested;
+    }
+
+    return null;
+  }
+
+  function getValue() {
+    const field = findField.apply(null, arguments);
+    if (!field) return "";
+    return String(field.value || "").trim();
+  }
+
+  function normalizeDate(value) {
+    if (!value) return "";
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return value;
+    }
+
+    if (/^\d{4}\/\d{2}\/\d{2}$/.test(value)) {
+      return value.replace(/\//g, "-");
+    }
+
+    const m = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (m) {
+      return `${m[3]}-${m[2]}-${m[1]}`;
+    }
+
+    return value;
+  }
+
+  function buildBookingUrl(type, params) {
+    const targetUrl = type === "group" ? BOOKING_URLS.group : BOOKING_URLS.birthday;
+    const url = new URL(targetUrl, window.location.origin);
+
+    Object.keys(params).forEach(function (key) {
+      if (params[key] !== undefined && params[key] !== null && params[key] !== "") {
+        url.searchParams.set(key, params[key]);
+      }
+    });
+
+    return url.pathname + url.search + url.hash;
+  }
+
+  function getTypeFromElement(el) {
+    if (!el) return "";
+
+    const id = String(el.id || "").toLowerCase();
+    const dataTab = String(el.getAttribute("data-w-tab") || "").toLowerCase();
+    const text = String(el.textContent || "").toLowerCase();
+
+    if (id.indexOf("group") !== -1) return "group";
+    if (id.indexOf("birthday") !== -1) return "birthday";
+
+    if (dataTab.indexOf("group") !== -1 || dataTab.indexOf("tab 2") !== -1) return "group";
+    if (dataTab.indexOf("birthday") !== -1 || dataTab.indexOf("tab 1") !== -1) return "birthday";
+
+    if (text.indexOf("group") !== -1 || text.indexOf("tab 2") !== -1) return "group";
+    if (text.indexOf("birthday") !== -1 || text.indexOf("tab 1") !== -1) return "birthday";
+
+    return "";
+  }
+
+  function setActiveTab(type) {
+    activeBookingType = type === "group" ? "group" : "birthday";
+
+    const birthdayTab = document.getElementById("birthdayTabBtn");
+    const groupTab = document.getElementById("groupTabBtn");
+
+    if (birthdayTab) {
+      birthdayTab.classList.toggle("is-active-booking-tab", activeBookingType === "birthday");
+    }
+
+    if (groupTab) {
+      groupTab.classList.toggle("is-active-booking-tab", activeBookingType === "group");
+    }
+  }
+
+  function inferBookingTypeFromTab(clickedButton) {
+    if (clickedButton) {
+      if (clickedButton.id === "groupQuickCheckAvailabilityBtn") {
+        return "group";
+      }
+
+      if (clickedButton.id === "quickCheckAvailabilityBtn") {
+        return "birthday";
+      }
+
+      const actionType = clickedButton.getAttribute("data-koko-booking-type");
+      if (actionType === "group" || actionType === "birthday") {
+        return actionType;
+      }
+    }
+
+    const currentTab = document.querySelector(".w-tab-link.w--current, [data-w-tab].w--current");
+    const currentType = getTypeFromElement(currentTab);
+    if (currentType) return currentType;
+
+    if (clickedButton) {
+      const pane = clickedButton.closest(".w-tab-pane");
+      if (pane) {
+        const paneText = String(pane.textContent || "").toLowerCase();
+
+        if (paneText.indexOf("group booking") !== -1) return "group";
+        if (paneText.indexOf("birthday party") !== -1) return "birthday";
+      }
+    }
+
+    return activeBookingType;
+  }
+
+  function getBookingFields(type) {
+    if (type === "group") {
+      return {
+        location: getValue("groupQuickLocation", "groupLocation"),
+        rawDate: getValue("groupQuickDate", "groupDate"),
+        guests: getValue("groupQuickGuests", "groupGuests")
+      };
+    }
+
+    return {
+      location: getValue("quickLocation", "location", "locationSlug", "location_slug"),
+      rawDate: getValue("quickDate", "date", "bookingDate"),
+      guests: getValue("quickGuests", "guests", "guest", "guestCount", "party_size")
+    };
+  }
+
+  function findAllCheckButtons() {
+    const nodes = Array.from(
+      document.querySelectorAll(
+        "#quickCheckAvailabilityBtn, #groupQuickCheckAvailabilityBtn, [data-koko-action='quick-book-now'], button, a, .w-button"
+      )
+    );
+
+    return nodes.filter(function (btn) {
+      const text = String(btn.textContent || "").trim().toLowerCase();
+
+      return (
+        btn.id === "quickCheckAvailabilityBtn" ||
+        btn.id === "groupQuickCheckAvailabilityBtn" ||
+        btn.getAttribute("data-koko-action") === "quick-book-now" ||
+        text === "check availability" ||
+        text === "check availablity" ||
+        text === "check avaiablity"
+      );
+    });
+  }
+
+  function submitQuickBooking(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const clickedButton = e.currentTarget;
+    const bookingType = inferBookingTypeFromTab(clickedButton);
+    const fields = getBookingFields(bookingType);
+
+    const location = fields.location;
+    const rawDate = fields.rawDate;
+    const date = normalizeDate(rawDate);
+    const guests = fields.guests;
+
+    console.log("KOKO quick booking submit:", {
+      bookingType: bookingType,
+      location: location,
+      rawDate: rawDate,
+      date: date,
+      guests: guests
+    });
+
+    if (!location) {
+      alert("Please select a location.");
+      return false;
+    }
+
+    if (!date) {
+      alert("Please choose a date.");
+      return false;
+    }
+
+    if (!guests || Number(guests) < 10) {
+      alert("Please enter a valid party size. Minimum 10 guests.");
+      return false;
+    }
+
+    if (new Date(date + "T00:00:00+11:00").getTime() < Date.now() + MIN_ADVANCE_MS) {
+      alert("Bookings must be made at least 72 hours in advance.");
+      return false;
+    }
+
+    const url = buildBookingUrl(bookingType, {
+      location: location,
+      date: date,
+      guests: guests,
+      auto_check: "1",
+      booking_type: bookingType
+    });
+
+    console.log("KOKO quick booking redirect:", url);
+
+    window.location.href = url;
+    return false;
+  }
+
+  document.addEventListener("click", function (e) {
+    const tab = e.target.closest(".w-tab-link, [data-w-tab], #birthdayTabBtn, #groupTabBtn");
+    const type = getTypeFromElement(tab);
+
+    if (type) {
+      setActiveTab(type);
+    }
+  }, true);
+
+  function bindCheckButtons() {
+    const checkButtons = findAllCheckButtons();
+
+    if (!checkButtons.length) {
+      console.warn("KOKO quick booking: no Check availability buttons found.");
+    }
+
+    checkButtons.forEach(function (btn) {
+      if (btn.dataset.kokoSubmitBound === "1") return;
+      btn.dataset.kokoSubmitBound = "1";
+
+      btn.addEventListener("click", submitQuickBooking, true);
+
+      const form = btn.closest("form");
+      if (form && form.dataset.kokoSubmitBound !== "1") {
+        form.dataset.kokoSubmitBound = "1";
+        form.addEventListener("submit", submitQuickBooking, true);
+      }
+    });
+  }
+
+  bindCheckButtons();
+  [300, 800, 1500, 2500].forEach(function (t) { setTimeout(bindCheckButtons, t); });
+
+  setActiveTab("birthday");
+});
+</script>
+
+<!-- ============================================================
+     B) 人数框加减号 stepper
+     ============================================================ -->
+<script>
+(function(){
+  var MIN = 10;                                  // 最小人数 / 默认值
+  var IDS = ["quickGuests", "groupQuickGuests"]; // 两个 tab 的人数框
+
+  function fire(el){
+    el.dispatchEvent(new Event("input",  { bubbles:true }));
+    el.dispatchEvent(new Event("change", { bubbles:true }));
+  }
+
+  function enhance(g){
+    if(!g) return;
+
+    if(g.tagName === "SELECT"){
+      var inp = document.createElement("input");
+      inp.type = "number";
+      if(g.id) inp.id = g.id;
+      if(g.name) inp.name = g.name;
+      if(g.className) inp.className = g.className;
+      inp.setAttribute("placeholder", g.getAttribute("placeholder") || "Number of guests");
+      g.parentElement.insertBefore(inp, g);
+      g.parentElement.removeChild(g);
+      g = inp;
+    }
+
+    var cur = parseInt(g.value, 10);
+    if(!g.value || !Number.isFinite(cur)) g.value = String(MIN);
+
+    if(g.dataset.kokoDone === "1" &&
+       g.parentElement && g.parentElement.classList.contains("koko-guest-stepper") &&
+       g.parentElement.querySelector(".koko-guest-stepper-btn")) return;
+
+    if(g.type !== "number") g.type = "number";
+    g.min  = String(MIN);
+    g.step = "1";
+    g.classList.add("koko-guest-input");
+
+    if(g.dataset.kokoBlur !== "1"){
+      g.dataset.kokoBlur = "1";
+      g.addEventListener("blur", function(){
+        var n = parseInt(g.value || String(MIN), 10);
+        g.value = String(Number.isFinite(n) ? Math.max(MIN, n) : MIN);
+      });
+    }
+
+    var wrapper = g.parentElement;
+    if(!wrapper || !wrapper.classList.contains("koko-guest-stepper")){
+      wrapper = document.createElement("div");
+      wrapper.className = "koko-guest-stepper";
+      g.parentElement.insertBefore(wrapper, g);
+      wrapper.appendChild(g);
+    }
+
+    if(!wrapper.querySelector(".koko-guest-stepper-controls")){
+      var controls = document.createElement("div");
+      controls.className = "koko-guest-stepper-controls";
+
+      var minusBtn = document.createElement("button");
+      minusBtn.type = "button";
+      minusBtn.className = "koko-guest-stepper-btn";
+      minusBtn.textContent = "−"; // −
+
+      var plusBtn = document.createElement("button");
+      plusBtn.type = "button";
+      plusBtn.className = "koko-guest-stepper-btn is-plus";
+      plusBtn.textContent = "+";
+
+      minusBtn.addEventListener("click", function(e){
+        e.preventDefault(); e.stopPropagation();
+        var n = parseInt(g.value || String(MIN), 10);
+        if(!Number.isFinite(n)) n = MIN;
+        g.value = String(Math.max(MIN, n - 1));
+        fire(g);
+      });
+      plusBtn.addEventListener("click", function(e){
+        e.preventDefault(); e.stopPropagation();
+        var n = parseInt(g.value || String(MIN), 10);
+        if(!Number.isFinite(n)) n = MIN;
+        g.value = String(n + 1);
+        fire(g);
+      });
+
+      controls.appendChild(minusBtn);
+      controls.appendChild(plusBtn);
+      wrapper.appendChild(controls);
+    }
+
+    g.dataset.kokoDone = "1";
+  }
+
+  function run(){
+    IDS.forEach(function(id){ enhance(document.getElementById(id)); });
+  }
+
+  if(document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", run);
+  } else {
+    run();
+  }
+  [100, 400, 900, 1500, 2500, 4000].forEach(function(t){ setTimeout(run, t); });
+
+  if(window.MutationObserver){
+    var scheduled = false;
+    var raf = window.requestAnimationFrame || function(fn){ return setTimeout(fn, 16); };
+    var mo = new MutationObserver(function(){
+      if(scheduled) return;
+      scheduled = true;
+      raf(function(){ scheduled = false; run(); });
+    });
+    mo.observe(document.documentElement, { childList:true, subtree:true });
+  }
+})();
+</script>
+
+<!-- ============================================================
+     C) 日期框 72 小时限制
+     ============================================================ -->
+<script>
+(function(){
+  var MIN_ADVANCE_HOURS = 72;
+  var MIN_ADVANCE_MS = MIN_ADVANCE_HOURS * 60 * 60 * 1000;
+
+  var TARGETS = [
+    ["quickDate", "bookingDateWrap"],
+    ["groupQuickDate", "groupBookingDateWrap"]
+  ];
+
+  function pad(n){ return String(n).padStart(2, "0"); }
+
+  function minDateStr(){
+    var d = new Date(Date.now() + MIN_ADVANCE_MS);
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  }
+
+  function isBeforeMin(value){
+    if(!value) return false;
+    return value < minDateStr();
+  }
+
+  function openPicker(input){
+    input.setAttribute("min", minDateStr());
+    try{
+      input.focus();
+      if(typeof input.showPicker === "function") input.showPicker();
+    }catch(e){
+      input.focus();
+    }
+  }
+
+  function correct(input){
+    if(isBeforeMin(input.value)){
+      input.value = minDateStr();
+      input.dispatchEvent(new Event("change", { bubbles:true }));
+      alert("Bookings must be made at least " + MIN_ADVANCE_HOURS + " hours in advance.");
+    }
+  }
+
+  function bind(id, wrapId){
+    var input = document.getElementById(id);
+    if(!input || input.dataset.kokoDateDone === "1") return;
+    if(input.type !== "date") input.type = "date";
+
+    input.setAttribute("min", minDateStr());
+    input.style.cursor = "pointer";
+
+    input.addEventListener("click", function(e){
+      e.stopPropagation();
+      openPicker(input);
+    });
+    input.addEventListener("focus", function(){
+      input.setAttribute("min", minDateStr());
+    });
+    input.addEventListener("change", function(){ correct(input); });
+    input.addEventListener("blur", function(){ correct(input); });
+
+    var wrap = (wrapId && document.getElementById(wrapId)) || input.parentElement;
+    if(wrap && wrap !== input){
+      wrap.style.cursor = "pointer";
+      wrap.addEventListener("click", function(){ openPicker(input); });
+    }
+
+    input.dataset.kokoDateDone = "1";
+  }
+
+  function run(){
+    TARGETS.forEach(function(t){ bind(t[0], t[1]); });
+  }
+
+  if(document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", run);
+  } else {
+    run();
+  }
+  [100, 400, 900, 1500, 2500, 4000].forEach(function(t){ setTimeout(run, t); });
+
+  if(window.MutationObserver){
+    var scheduled = false;
+    var raf = window.requestAnimationFrame || function(fn){ return setTimeout(fn, 16); };
+    var mo = new MutationObserver(function(){
+      if(scheduled) return;
+      scheduled = true;
+      raf(function(){ scheduled = false; run(); });
+    });
+    mo.observe(document.documentElement, { childList:true, subtree:true });
+  }
+})();
+</script>

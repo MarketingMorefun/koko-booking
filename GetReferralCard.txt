@@ -1,0 +1,50 @@
+query GetReferralCard verb=GET {
+  api_group = "KOKO Booking"
+
+  input {
+    text code
+  }
+
+  // Deliberately minimal, public, read-only lookup by referral_code only —
+  // no booking_id, no email/phone, nothing that lets a stranger enumerate
+  // or browse other customers' data. Someone can only reach a real card by
+  // already having the code (printed card, or the confirmation email).
+  stack {
+    var $error_message {
+      value = null
+    }
+
+    var $Booking {
+      value = null
+    }
+
+    conditional {
+      if ($input.code == null || $input.code == "") {
+        var $error_message {
+          value = "Missing referral code"
+        }
+      }
+
+      else {
+        db.query bookings {
+          where = $db.bookings.referral_code == $input.code
+          return = {type: "single"}
+        } as $Booking
+
+        conditional {
+          if ($Booking == null) {
+            var $error_message {
+              value = "We couldn't find that referral code"
+            }
+          }
+        }
+      }
+    }
+  }
+
+  response = {
+    error_message: $error_message
+    customer_name: $Booking.customer_name
+    referral_code: $Booking.referral_code
+  }
+}

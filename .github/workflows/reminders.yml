@@ -1,3 +1,5 @@
+$ cat "/Users/zimowang/workspace/Claude koko website/.github/workflows/reminders.yml"
+
 name: Booking reminders
 
 on:

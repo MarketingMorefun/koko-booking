@@ -1,0 +1,132 @@
+<!-- KOKO referral card — printable page for staff (or customers via the email link) -->
+<!-- Page: /booking/referral-card?code=KOKO-354-4821 -->
+<!-- Webflow setup: create the page, in the body add ONE empty div: -->
+<!--   <div id="referralCardRoot"></div>                                    -->
+<!-- Page settings → Custom code → Footer: paste this whole file.           -->
+<!-- Everything else (styling, loading/error states, the card, print        -->
+<!-- button) is built by the script below — no other elements needed.      -->
+<!-- Page settings → Custom code → Head (optional, keeps it out of search): -->
+<!--   <meta name="robots" content="noindex, nofollow">                     -->
+<script>
+(function () {
+  var BASE = 'https://x8ki-letl-twmt.n7.xano.io/api:KARDPSrJ';
+
+  var style = document.createElement('style');
+  style.textContent = [
+    '.koko-refcard-wrap{max-width:520px;margin:60px auto;padding:0 20px;font-family:"Maven Pro",Arial,sans-serif;}',
+    '.koko-refcard-state{text-align:center;color:#7B6A58;font-size:15px;padding:40px 0;}',
+    '.koko-refcard{background:#fff;border:2px solid #221D16;border-radius:24px;box-shadow:6px 6px 0 #221D16;padding:36px 30px;text-align:center;}',
+    '.koko-refcard-badge{display:inline-block;padding:6px 16px;border-radius:999px;background:#F5D949;border:1px solid #221D16;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#221D16;margin-bottom:18px;}',
+    '.koko-refcard h1{margin:0 0 10px;font-size:26px;line-height:1.2;color:#221D16;}',
+    '.koko-refcard p{margin:0 0 22px;font-size:15px;line-height:1.6;color:#7B6A58;}',
+    '.koko-refcard-code{display:inline-block;padding:16px 28px;border:2px dashed #221D16;border-radius:16px;background:#FFFBF5;font-size:28px;font-weight:900;letter-spacing:.06em;color:#221D16;margin-bottom:20px;}',
+    '.koko-refcard-for{font-size:13px;color:#9A8B7C;margin-bottom:26px;}',
+    '.koko-refcard-rules{text-align:left;background:#FAF6EE;border:1px solid #E8DDCC;border-radius:14px;padding:16px 18px;margin-bottom:26px;font-size:13.5px;color:#2F241C;line-height:1.6;}',
+    '.koko-refcard-rules strong{display:block;margin-bottom:6px;}',
+    '.koko-refcard-print{display:inline-flex;align-items:center;gap:8px;padding:13px 24px;border:2px solid #221D16;border-radius:16px;background:#F5D949;box-shadow:4px 4px 0 #221D16;font-weight:700;font-size:14px;color:#221D16;cursor:pointer;transition:all 140ms ease;}',
+    '.koko-refcard-print:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 #221D16;}',
+    '.koko-refcard-print:active{transform:translate(0,0);box-shadow:2px 2px 0 #221D16;}',
+    '@media print{',
+    // Hiding every direct child of <body> only works if the thing we
+    // want to keep visible IS a direct child of <body>. On a real
+    // Webflow page #referralCardRoot is nested inside the page's normal
+    // section/container wrappers, so hiding body>* also hides one of
+    // ITS ancestors — display:none on an ancestor can't be undone by
+    // display:block on the descendant, which is why print came out
+    // blank. Fix: print from a dedicated root appended straight to
+    // <body> (see ensurePrintRoot below), never the nested one.
+    '  body>*{display:none !important;}',
+    '  #kokoRefCardPrintRoot{display:block !important;position:static !important;}',
+    '  #kokoRefCardPrintRoot .koko-refcard-wrap{margin:0 auto !important;}',
+    '  #kokoRefCardPrintRoot .koko-refcard{box-shadow:none !important;}',
+    '  #kokoRefCardPrintRoot .koko-refcard-print-wrap{display:none !important;}',
+    '  @page{margin:14mm;size:A5 landscape;}',
+    '}'
+  ].join('\n');
+  document.head.appendChild(style);
+
+  function root() {
+    return document.getElementById('referralCardRoot') || document.body;
+  }
+
+  function ensurePrintRoot() {
+    var printRoot = document.getElementById('kokoRefCardPrintRoot');
+    if (!printRoot) {
+      printRoot = document.createElement('div');
+      printRoot.id = 'kokoRefCardPrintRoot';
+      document.body.appendChild(printRoot);
+    }
+    return printRoot;
+  }
+
+  function printCard() {
+    var card = document.querySelector('#referralCardRoot .koko-refcard-wrap, .koko-refcard-wrap');
+    var printRoot = ensurePrintRoot();
+    printRoot.innerHTML = '';
+    if (card) printRoot.appendChild(card.cloneNode(true));
+    // Two animation-frame ticks give the browser a real layout/paint
+    // pass on the freshly-inserted content before it snapshots the page
+    // for printing — without this some browsers print a blank page.
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        window.print();
+      });
+    });
+  }
+
+  function renderState(text) {
+    root().innerHTML = '<div class="koko-refcard-wrap"><div class="koko-refcard-state">' + text + '</div></div>';
+  }
+
+  function renderCard(customerName, code) {
+    var namePart = customerName ? ('for <strong>' + escapeHtml(customerName) + '</strong>') : '';
+    root().innerHTML =
+      '<div class="koko-refcard-wrap">' +
+        '<div class="koko-refcard">' +
+          '<div class="koko-refcard-badge">Refer a Friend</div>' +
+          '<h1>You both save $30!</h1>' +
+          '<p>Share this code with a friend. When they book their first KOKO birthday party or group event and enter it at checkout, they get $30 off — and you get $30 off your next KOKO visit too.</p>' +
+          '<div class="koko-refcard-code">' + escapeHtml(code) + '</div>' +
+          (namePart ? '<div class="koko-refcard-for">' + namePart + '</div>' : '') +
+          '<div class="koko-refcard-rules"><strong>How it works</strong>Your friend enters this code when they book. Once their deposit is paid, your $30 credit is automatically added and applies to your next booking — no expiry.</div>' +
+          '<div class="koko-refcard-print-wrap"><button type="button" class="koko-refcard-print" id="refCardPrintBtn">🖨️  Print this card</button></div>' +
+        '</div>' +
+      '</div>';
+
+    var btn = document.getElementById('refCardPrintBtn');
+    if (btn) {
+      btn.addEventListener('click', printCard);
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  var qs = new URLSearchParams(location.search);
+  var code = (qs.get('code') || '').trim();
+
+  if (!code) {
+    renderState('No referral code was given. Check the link and try again.');
+    return;
+  }
+
+  renderState('Loading your referral card…');
+
+  fetch(BASE + '/GetReferralCard?code=' + encodeURIComponent(code))
+    .then(function (r) { return r.text(); })
+    .then(function (t) {
+      var d = t.trim() ? JSON.parse(t) : null;
+      if (!d || d.error_message) {
+        renderState((d && d.error_message) ? d.error_message : 'We couldn’t load this referral card.');
+        return;
+      }
+      renderCard(d.customer_name, d.referral_code || code);
+    })
+    .catch(function () {
+      renderState('Something went wrong loading this card. Please try again.');
+    });
+})();
+</script>
