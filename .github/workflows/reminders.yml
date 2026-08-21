@@ -6,6 +6,14 @@ on:
   schedule:
     - cron: '0 * * * *'   # every hour, on the hour
   workflow_dispatch:        # lets you trigger it manually from the Actions tab
+  push:
+    # GitHub auto-creates a check run for every push even though this workflow
+    # doesn't trigger on push, and marks it "failed: no jobs were run" — noisy
+    # false-alarm emails on every commit. Scoping push to just this file turns
+    # that into a real (harmless) run only when this file itself changes, and
+    # a "skipped" run (no email) on every other push.
+    paths:
+      - '.github/workflows/reminders.yml'
 
 jobs:
   run:
