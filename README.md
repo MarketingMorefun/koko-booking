@@ -1,164 +1,150 @@
 # koko-booking
 
-Embeddable **vanilla-JS booking widgets** for KOKO Amusement venues. Two independent
-flows — single/party (birthday) booking and group booking — plus a scroll helper.
+Source-of-truth archive for KOKO Amusement's booking system. Nothing here runs on
+its own — every file is either pasted into **Xano** (backend), a Google **Apps
+Script** project, or a Webflow **page's custom code**, by hand. This repo exists so
+changes are versioned and reviewable before they're pasted in.
 
-No framework, no build step. Each script is dropped onto a CMS page (Webflow) and
-**progressively enhances existing markup by element ID**: it finds the page's
-location select, date field, package cards, buttons, etc. (with many ID/label
-fallbacks so it survives CMS edits), drives a multi-step flow, talks to a **Xano**
-backend, and finally redirects to **Stripe** for the deposit.
+## Architecture
 
-- **Backend:** `https://x8ki-letl-twmt.n7.xano.io/api:KARDPSrJ` (Xano)
-- **Payment:** Stripe — the API returns a payment/checkout URL; the widget redirects to it.
+```
+Webflow pages (custom code / HTML embeds)
+        │  fetch()
+        ▼
+Xano backend  https://x8ki-letl-twmt.n7.xano.io/api:KARDPSrJ
+        │  Stripe Checkout redirect            │  Resend (transactional email)
+        ▼                                       ▼
+     Stripe                                  customer inbox
+        │  webhook
+        ▼
+   StripeWebhook (Xano)
+
+Google Sheet "Booking Master"  ◄── Apps Script (SyncBookings.gs, hourly trigger)
+        │
+        ▼
+   Google Calendar (per-venue) + [NEW BOOKING] staff email
+
+GitHub Actions (.github/workflows/reminders.yml, hourly cron)
+        └─► POST /RunReminders   (Xano has no Background Tasks on the free plan)
+```
+
+- **Backend:** Xano, `api_group = "KOKO Booking"`. Files below are either **queries**
+  (HTTP endpoints, `verb=POST/GET`) or **functions** (`function expire_stale_holds`,
+  only callable from another Xano query via `function.run`, no URL of its own).
+- **Payment:** Stripe Checkout. `ConfirmBooking`/`ConfirmGroupBooking` create the
+  session and return `payment_url`; `StripeWebhook` reacts to the result.
+- **Email:** Resend (`api.resend.com`), sender `booking@mail.morefun.com.au`
+  (DNS-verified domain — sending from anything else silently 403s).
+- **CDN:** frontend `.js` is hosted via jsDelivr from this repo
+  (`cdn.jsdelivr.net/gh/MarketingMorefun/koko-booking@<commit>/...`) — always
+  reference a commit hash, not `@main`, or the CDN serves a stale cached copy.
+- **Money:** always cents (`int ..._cents`). Deposit is `$50.00` (`5000`), card
+  surcharge `$1.50` (`150`), referral/repeat-customer discount `$30.00` (`3000`).
+
+⚠️ Every file with a Resend/API key placeholder (`re_YOUR_RESEND_API_KEY`) needs the
+**real** key swapped in by hand after pasting into Xano — the real key is never
+committed here (GitHub's push protection blocks it, and it'd be a public leak anyway).
 
 ---
 
-## Files
+## Xano — API endpoints (queries)
+
+| File | Endpoint | Purpose |
+|---|---|---|
+| `CreateBooking.txt` | `POST /CreateBooking` | Creates a birthday-party `hold`: validates location/room/slot/package/addons, applies a repeat-customer or referral `$30` discount if one applies (reserving the credit to `pending`), returns the booking. |
+| `CreateGroupBooking.txt` | `POST /CreateGroupBooking` | Same as above for group bookings (no `party_room_id`/room-capacity checks; per-person pricing). |
+| `ConfirmBooking.txt` | `POST /ConfirmBooking` | Turns a `hold`/`pending_payment` birthday booking into a Stripe Checkout Session and returns `payment_url`. Re-checks the room/slot is still free if the 15-min hold has technically lapsed, instead of hard-rejecting. Always mints a fresh Stripe session (never reuses a stored `payment_url`, which could be stale/expired). |
+| `ConfirmGroupBooking.txt` | `POST /ConfirmGroupBooking` | Same for group bookings (no slot re-check — group bookings don't hold an exclusive room the way birthday bookings do). |
+| `StripeWebhook.txt` | `POST /StripeWebhook` | Stripe webhook target. On `checkout.session.completed`/`async_payment_succeeded`: marks the booking `deposit_paid`, mints its `referral_code`, finalises any reserved discount credit (marks it `used`, or awards the referrer a new credit), awards the paying customer a fresh `$30` credit for next time, and sends the deposit-confirmation email (invitation download block + referral card block included). On `checkout.session.expired`: marks the booking `expired` unless it's already paid. |
+| `ResendConfirmationEmail.txt` | `POST /ResendConfirmationEmail` | Manually re-sends the exact same confirmation email as `StripeWebhook` (staff-triggered, e.g. customer says they never got it) — reads the booking's existing `referral_code` rather than minting a new one. |
+| `RunReminders.txt` | `POST /RunReminders` (secret-protected) | Abandoned-cart recovery: emails bookings still `hold`/`pending_payment` at 1h (`reminder_1`) and 20h (`reminder_2`) old, linking to `/booking/resume`. Triggered hourly by GitHub Actions (Xano free plan has no Background Tasks). Only marks a reminder "sent" if Resend actually accepted it. |
+| `GetReferralCard.txt` | `GET /GetReferralCard?code=` | Public, read-only lookup by `referral_code` only (no booking ID, no email/phone) — backs the printable referral card page. A stranger can't browse other customers' data without already having their code. |
+| `BackfillReferralCodesAndCredits.txt` | `POST /BackfillReferralCodesAndCredits` (secret-protected) | One-time, batched backfill: mints a `referral_code` + `$30` credit for every historical `deposit_paid`/`paid` booking that predates the referral feature, then emails each customer once (deduped per email, batched to respect Resend rate limits). Safe to call repeatedly — already-processed bookings are skipped. |
+
+## Xano — functions
 
 | File | Purpose |
 |---|---|
-| `koko-booking.js` | Single / party (birthday) booking flow. State: `window.bookingState`. |
-| `koko-booking.css` | Styles for the single-booking widget (package cards, slots, review). |
-| `koko-group-booking.js` | Group booking flow (10+/20+ guests). State: `window.groupBookingState`. |
-| `koko-group-booking.css` | Styles for the group widget (guest stepper, slots, addon cards). |
-| `koko-group-scroll.js` | UX helper: smooth-scrolls to the next section as the user advances the group flow. |
+| `expire_stale_holds.txt` | Called via `function.run` from `CreateBooking`/`CreateGroupBooking`. Sweeps `hold`/`pending_payment` bookings older than 24h to `expired` (must stay 24h — the reminder emails at 1h/20h rely on the booking still reading `hold`/`pending_payment` that whole window). Releases any credit that booking had reserved back to `available` so it isn't stranded. |
 
-The two `.js` flows are self-contained IIFEs and can be loaded independently. Both
-define the same money constants locally (they do not share code).
+## Google Apps Script
 
----
+Bound to the "Booking Master" Google Sheet.
 
-## Pricing (both flows)
+| File | Purpose |
+|---|---|
+| `SyncBookings.gs` | Hourly trigger: pulls every booking from `BookingSheetExport`, rewrites the "Booking Master" sheet, upserts a Google Calendar event per `deposit_paid` booking (per-venue calendar, deleted if the booking un-pays), sends the `[NEW BOOKING]` staff notification email the first time a booking's calendar event is created (tracked via its own `new_booking_email_sent` column, independent of calendar success so a failed send retries), and syncs `referral_code`/`discount_aud`/`discount_reason` into the sheet. Also exposes `backfillMissingNewBookingEmails()` — a manual, non-triggered function to catch up `[NEW BOOKING]` emails for bookings that were skipped when that column was first added. |
+| `SyncMailchimp.gs` | Syncs a separate "Form responses" sheet into Mailchimp, splitting contacts into per-store sheets/audiences by a "store name" column. Unrelated to the booking flow above. |
+
+## Webflow — booking flow widgets (main multi-step forms)
+
+| File | Page | Purpose |
+|---|---|---|
+| `koko-booking.js` | `/booking/birthday-party` | Full birthday-party booking flow: location → check availability → package → addons → contact (incl. optional `referralCode` field) → review (shows a discount banner if one applies) → pay. Progressively enhances existing page markup by element ID (with fallbacks), so it survives most CMS edits. State in `window.bookingState`. |
+| `koko-group-booking.js` | `/booking/group` | Same shape for group bookings (`groupReferralCode` field, guest-count stepper, add-on quantity/rules). State in `window.groupBookingState`. |
+| `koko-group-scroll.js` | `/booking/group` | Purely cosmetic: smooth-scrolls to the next section as the group flow advances. Safe to omit. |
+| `koko-booking-embed.min.txt` | — | ⚠️ Older, minified, birthday-only booking snippet (calls `CreateBooking` but not the current `referralCode` field or the group flow) — looks superseded by `koko-booking.js`. Kept here for reference; confirm before treating as live. |
+
+### Pricing constants (defined independently in both flow scripts — keep in sync)
 
 ```js
-DEPOSIT_CENTS      = 5000   // $50.00 refundable/booking deposit
+DEPOSIT_CENTS      = 5000   // $50.00 refundable deposit
 SURCHARGE_CENTS    = 150    // $1.50 card surcharge
 PAYABLE_NOW_CENTS  = 5150   // $51.50 charged now (deposit + surcharge)
+MIN_ADVANCE_MS     = 259_200_000   // must book ≥ 72h ahead
 ```
 
-At the review step the widget injects a breakdown box above the pay button
-(**Deposit $50.00 + Card surcharge $1.50 = Total payable now $51.50**) and relabels
-the button `Pay $51.50`. The remaining balance (package + addons − deposit) is shown
-for reference and settled at the venue.
+## Webflow — standalone pages
+
+| File | Page | Purpose |
+|---|---|---|
+| `koko-booking-resume-page.html` | `/booking/resume?booking_id=&type=party\|group` | Abandoned-cart recovery landing page — calls `ConfirmBooking`/`ConfirmGroupBooking` to mint a fresh Stripe link and redirects, or shows a friendly error (e.g. slot taken). Linked from `RunReminders`' emails. |
+| `koko-booking-success-page.html` | `/booking/booking-success` | Post-payment confirmation page. |
+| `koko-booking-cancel-page.html` | `/booking/booking-cancelled` | Shown if the customer backs out of Stripe Checkout. |
+| `koko-referral-card-page.html` | `/booking/referral-card?code=` | Printable/emailable referral code card — fetches `GetReferralCard`, renders a branded card, "Print this card" button. Prints from a dedicated root appended straight to `<body>` (the page's real `#referralCardRoot` is nested inside Webflow's own wrappers, so a naive `body>*{display:none}` print rule hides one of *its* ancestors too). |
+| `koko-parties-quick-booking.html` | `/parties` | Quick-book widget (tab between Birthday/Group, pick location+date+guests, "Check availability" redirects into the full flow with `?auto_check=1`). Points directly at the birthday flow's current slug (`/booking/birthday-party`) — if that page's slug ever changes again, update `BOOKING_URLS.birthday` here rather than relying on Webflow's redirect, which drops query params. |
+| `koko-homepage-quick-booking.html` | Home | Same quick-book widget, birthday-only, for the homepage hero. Same slug caveat as above (`TARGET_PAGE`). |
+
+## Webflow — feature add-ons (paste *alongside* a flow script, don't replace it)
+
+| File | Where | Purpose |
+|---|---|---|
+| `koko-invitation-download.html` | Birthday flow page | "Download the invitation" PNG/PDF buttons. |
+| `koko-group-print-quote.html` | `/booking/group`, below `koko-group-booking.js` | "Save this quote as a PDF" button on the group review step. |
+| `koko-location-select.js` | Any page with a `<select>` | Restyles native `<select>` elements as a custom dropdown (single or checkbox-multi if the select has `multiple`). |
 
 ---
 
-## Single / party booking — `koko-booking.js`
+## Element ID contract (both flow scripts)
 
-Flow (each step reveals the next section and scrolls to it):
-
-```
-location → Check availability → package (Joy/Fun/Max) → addons → contact → Review → Pay
-```
-
-Backend calls (all `POST {BASE_URL}/...` with `{ payload }`, except GETs):
-
-| Endpoint | When |
-|---|---|
-| `/LocationNote` | describe the selected venue |
-| `/Availability` | check rooms/slots for location+date+guests |
-| `/addons` | list add-ons for the chosen room/slot |
-| `/Quote` | price a package + add-ons |
-| `/CreateBooking` | create the pending booking |
-| `/ConfirmBooking` | get the Stripe payment URL, then redirect |
-
-Key config:
-
-```js
-MIN_PARTY_SIZE = 10
-MIN_ADVANCE_MS = 259_200_000        // must book ≥ 3 days ahead
-PACKAGE_IDS = { joy: 10, fun: 5, max: 1 }   // KOKO Party Joy / Fun / Max
-LOCATION_GUEST_LIMITS = { Hurstville:16, Hornsby:16, Haymarket:16, Burwood:16, Townhall_614:20 }  // else 25
-```
-
-Locations (`slug → display name`): `Townhall_614` → "Town Hall - 614", `Hurstville`,
-`Hornsby`, `KOKO_Cityheroes_Hornsby` → "KOKO&Cityheroes - Hornsby", `Burwood`,
-`Haymarket`. Package availability is per-location (e.g. `KOKO_Cityheroes_Hornsby`
-offers only Joy); cards for unavailable packages are hidden and the grid re-lays out.
-
-**Deep linking:** `applyParams()` reads URL query params and pre-fills the form,
-retrying a few times as the CMS renders:
-`?location=<slug>&date=<dd/mm/yyyy>&guests=<n>&auto_check=1` (also accepts
-`location_slug`, `bookingDate`, `party_size`, etc.). `auto_check=1` auto-runs the
-availability check once all three are set.
-
-**Add-on note:** a party-room add-on (`addon_id === 7`) extends the booking end time
-by one hour before `/CreateBooking`.
-
----
-
-## Group booking — `koko-group-booking.js`
-
-Flow:
-
-```
-basics (location/date/guests) → Group availability (time slots)
-  → package → add-ons (quantity steppers) → contact → Review → Pay
-```
-
-Backend calls:
-
-| Endpoint | When |
-|---|---|
-| `/GroupAvailability` | list group session time slots |
-| `/GroupAddons?location_slug=…` | list group add-ons |
-| `/GroupQuote` | price the group session |
-| `/Availability` | check a room-extension add-on |
-| `/CreateGroupBooking` | create the pending group booking |
-| `/ConfirmGroupBooking` | returns `payment_url` → `window.location.assign(...)` |
-
-Notable behaviour:
-
-- **Guest stepper** (`setupGuestStepper`) — +/- buttons on the guest count.
-- `MIN_ADVANCE_MS = 72h`, `DEFAULT_SESSION_MINUTES = 30` (used when a slot has no
-  explicit `end_ts`).
-- **Time-slot picker** groups slots into ranges; selecting one sets `start_ts`/`end_ts`.
-- **Add-on cards** support quantities and rules — e.g. billiards enforces a minimum
-  number of tables scaled to guest count (`ceil(guests / 4)`, min 3).
-- `ID_ALIASES` maps the many possible CMS element IDs to logical names so the widget
-  keeps working across page edits.
-
----
-
-## Scroll helper — `koko-group-scroll.js`
-
-A tiny IIFE, independent of the flow logic. It listens (capture phase) for clicks on
-the group flow's buttons and smooth-scrolls to the next relevant section
-(availability → slots → packages → add-ons/contact → review), offset 110px under the
-sticky header. It also clears the group message when the user changes location/date/
-guests. Purely cosmetic — safe to omit.
-
----
-
-## Element ID contract
-
-The widgets look up page elements by ID with fallbacks. The main IDs expected on the
-page include (single flow): `locationSlug`/`location`, `bookingDate`/`date`,
-`guestCount`/`guests`, `checkAvailabilityBtn`, `availabilitySection`,
-`selectPackage{Joy,Fun,Max}` (or `[data-koko-package=…]`), `packageSection`,
-`addonsSection`, `contactSection`, `customerName/Phone/Email`, `reviewSection`,
-`review*` fields, `createBookingBtn`, `confirmBookingBtn`. Group flow uses the
-`group*` equivalents (`groupLocation`, `groupDate`, `groupGuests`,
-`groupAvailabilityBtn`, `groupSlotsSection`, `groupPackagesSection`,
-`groupAddonsSection`, `groupContactSection`, `groupReviewSection`, `groupReviewBtn`).
-
-Buttons can also be targeted with `data-koko-*` attributes; missing sections produce a
-visible message instead of failing silently.
-
----
-
-## Local development
-
-These are static assets — there's no build. To edit: change the `.js`/`.css`, and
-host them where the CMS page includes them (e.g. Webflow custom code / an asset host).
-`BASE_URL` and the pricing constants are the top of each `.js` file.
+Widgets look elements up by ID with fallbacks, so a CMS rename doesn't necessarily
+break them. Single flow: `locationSlug`/`location`, `bookingDate`/`date`,
+`guestCount`/`guests`, `quickCheckAvailabilityBtn`, `availabilitySection`,
+`selectPackage{Joy,Fun,Max}`, `packageSection`, `addonsSection`, `contactSection`,
+`customerName`/`Phone`/`Email`, `referralCode`, `reviewSection`, `review*` fields,
+`createBookingBtn`, `confirmBookingBtn` (typo alias `confitmBookingBtn` intentionally
+also accepted). Group flow uses the `group*` equivalents, plus `groupReferralCode`.
+Buttons can also be targeted with `data-koko-*` attributes; a missing required section
+shows a visible message instead of failing silently.
 
 ## Gotchas
 
-- **Money is in cents** everywhere; `money(cents)` formats to `$xx.xx`.
-- **Dates** are normalised to `dd/mm/yyyy` (`dateNorm`); the API is Xano.
-- The `confirmBookingBtn` typo alias `confitmBookingBtn` is intentionally supported —
-  both IDs are accepted so a CMS typo doesn't break payment.
-- Changing the **$1.50 surcharge / $50 deposit** means editing `SURCHARGE_CENTS` /
-  `DEPOSIT_CENTS` in **both** `koko-booking.js` and `koko-group-booking.js`.
+- **Publish is separate from Save** in both Xano and Webflow — a change that "doesn't
+  seem to work" is very often just unpublished.
+- **`hold_expires_at_ts` (15 min) ≠ "give up on this customer" (24h).** The 15-minute
+  field only controls how long a booking exclusively blocks its exact room/slot from
+  other customers during the conflict check in `CreateBooking`/`CreateGroupBooking`.
+  `expire_stale_holds` uses `created_at` + 24h instead — conflating the two silently
+  broke the reminder-email system once already.
+- **A `$30` credit is reserved (`pending`), not consumed, until the booking that
+  claimed it actually reaches `deposit_paid`.** This closes a real double-spend found
+  via live testing (two concurrent holds from the same customer email both claiming
+  the same credit) and means `expire_stale_holds` must release an abandoned booking's
+  reserved credit back to `available`, or it'd be stranded forever.
+- **Xano's `where=` clause can't apply filters (e.g. `|trim`, `|lower`) to a database
+  column** — only to literal/variable values. Do that transform in memory instead
+  (`array.filter`/`array.find` after a plain `db.query`).
+- **`array.slice` is not a real Xano function** — batch a `foreach` with a manually
+  incremented counter variable + `if (counter < limit)` instead.
+- Changing the **`$1.50` surcharge / `$50` deposit / `$30` discount** means editing the
+  constant in every file that has its own copy — they're not shared.
