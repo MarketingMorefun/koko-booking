@@ -1123,14 +1123,22 @@ function bookingId(b){
 function renderGroupReview(){
   const q=window.groupBookingState.quote || {};
   const b=window.groupBookingState.booking || {};
+  // The booking record (b) is authoritative — it's exactly what
+  // CreateGroupBooking computed and saved, and what actually gets
+  // charged. The quote (q) is only a pre-booking estimate and can go
+  // stale if addons changed after it was fetched; fall back to it only
+  // if the booking hasn't come back yet.
+  const packageTotalCents=b.package_total_cents!=null?b.package_total_cents:q.package_total_cents;
+  const addonsTotalCents=b.addons_total_cents!=null?b.addons_total_cents:q.addons_total_cents;
+  const grandTotalCents=b.grand_total_cents!=null?b.grand_total_cents:q.grand_total_cents;
   reviewText("groupReviewLocation",window.groupBookingState.location_slug);
   reviewText("groupReviewDate",window.groupBookingState.date);
   reviewText("groupReviewGuests",window.groupBookingState.guests);
   reviewText("groupReviewTime",window.groupBookingState.selected_slot_label);
   reviewText("groupReviewPackage",window.groupBookingState.selected_package_name);
-  reviewText("groupReviewPackageTotal",money(q.package_total_cents));
-  reviewText("groupReviewAddonsTotal",money(q.addons_total_cents));
-  reviewText("groupReviewGrandTotal",money(q.grand_total_cents));
+  reviewText("groupReviewPackageTotal",money(packageTotalCents));
+  reviewText("groupReviewAddonsTotal",money(addonsTotalCents));
+  reviewText("groupReviewGrandTotal",money(grandTotalCents));
   reviewText("groupReviewCustomerName",window.groupBookingState.customer_name);
   reviewText("groupReviewCustomerPhone",window.groupBookingState.customer_phone);
   reviewText("groupReviewCustomerEmail",window.groupBookingState.customer_email);
@@ -1156,7 +1164,7 @@ function injectDiscountBanner(b){
   box.innerHTML="<span>"+label+"</span><span>-"+money(discountCents)+"</span>";
   anchor.parentNode.insertBefore(box,anchor.nextSibling);
 
-  const grandCents=Number((window.groupBookingState.quote||{}).grand_total_cents || 0);
+  const grandCents=Number(b.grand_total_cents!=null?b.grand_total_cents:(window.groupBookingState.quote||{}).grand_total_cents||0);
   const newTotalCents=Math.max(grandCents-discountCents,0);
   const totalRow=document.createElement("div");
   totalRow.id="kokoGroupDiscountedTotal";

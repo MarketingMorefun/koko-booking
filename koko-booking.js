@@ -902,7 +902,14 @@ return walk(data);
 function renderReview(){
 if(!$("reviewSection"))return msg("reviewSection not found. Please add id='reviewSection' to Step 6.",true);
 const q=window.bookingState.quote||{},b=window.bookingState.booking||{},id=bookingId(b);
-const grand=Number(q.grand_total_cents||0),discountCents=Number(b.discount_cents||0),remain=Math.max(grand-DEPOSIT_CENTS-discountCents,0);
+// The booking record (b) is authoritative — it's exactly what CreateBooking
+// computed and saved, and what actually gets charged. The quote (q) is only
+// a pre-booking estimate and can go stale if addons changed after it was
+// fetched; fall back to it only if the booking hasn't come back yet.
+const packageTotalCents=Number(b.package_total_cents!=null?b.package_total_cents:q.package_total_cents||0);
+const addonsTotalCents=Number(b.addons_total_cents!=null?b.addons_total_cents:q.addons_total_cents||0);
+const grand=Number(b.grand_total_cents!=null?b.grand_total_cents:q.grand_total_cents||0);
+const discountCents=Number(b.discount_cents||0),remain=Math.max(grand-DEPOSIT_CENTS-discountCents,0);
 reviewText("reviewStatus","Deposit required");
 reviewText("reviewLocation",locName(window.bookingState.location_slug));
 reviewText("reviewDate",window.bookingState.date);
@@ -917,9 +924,9 @@ reviewText("reviewBirthdayChildName",window.bookingState.birthday_child_name);
 reviewText("reviewBirthdayChildGender",window.bookingState.birthday_child_gender);
 reviewText("reviewAverageAge",window.bookingState.average_age);
 reviewText("reviewBookingNotes",window.bookingState.booking_notes||"-");
-reviewText("reviewPackageTotal",money(q.package_total_cents));
-reviewText("reviewAddonsTotal",money(q.addons_total_cents));
-reviewText("reviewGrandTotal",money(q.grand_total_cents));
+reviewText("reviewPackageTotal",money(packageTotalCents));
+reviewText("reviewAddonsTotal",money(addonsTotalCents));
+reviewText("reviewGrandTotal",money(grand));
 reviewText("reviewDepositDue",money(DEPOSIT_CENTS));
 reviewText("reviewRemainingBalance",money(remain));
 reviewText("reviewBookingId",id||"-");
@@ -944,7 +951,7 @@ box.style.cssText="margin-top:8px;padding:10px 14px;border-radius:12px;backgroun
 box.innerHTML="<span>"+label+"</span><span>-"+money(discountCents)+"</span>";
 anchor.parentNode.insertBefore(box,anchor.nextSibling);
 
-const grandCents=Number((window.bookingState.quote||{}).grand_total_cents||0);
+const grandCents=Number(b.grand_total_cents!=null?b.grand_total_cents:(window.bookingState.quote||{}).grand_total_cents||0);
 const newTotalCents=Math.max(grandCents-discountCents,0);
 const totalRow=document.createElement("div");
 totalRow.id="kokoDiscountedTotal";
