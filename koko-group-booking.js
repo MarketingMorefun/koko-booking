@@ -973,7 +973,7 @@ function ensureGroupContactSection(showNow){
     if(addons && addons.nextSibling) parent.insertBefore(section,addons.nextSibling);
     else parent.appendChild(section);
   }
-  if(!section.dataset.generatedContact){
+  if(!section.dataset.generatedContact && section.childElementCount===0){
     section.dataset.generatedContact="1";
     section.classList.add("koko-generated-contact");
     section.innerHTML="";
