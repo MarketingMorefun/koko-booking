@@ -29,6 +29,13 @@ query CreateBooking verb=POST {
         text referral_code?
         timestamp start_ts
         timestamp end_ts
+
+        // ---- Booking source / marketing channel (read-only, for reporting) ----
+        text utm_source?
+        text utm_medium?
+        text utm_campaign?
+        text landing_referrer?
+        text entry_page?
       }
     }
   }
@@ -498,6 +505,11 @@ query CreateBooking verb=POST {
             referral_code_used        : $referral_code_used
             referral_code             : ""
             booking_type              : "birthday_party"
+            utm_source                : $input.payload.utm_source
+            utm_medium                : $input.payload.utm_medium
+            utm_campaign              : $input.payload.utm_campaign
+            landing_referrer          : $input.payload.landing_referrer
+            entry_page                : $input.payload.entry_page
           }
         } as $Booking
       }

@@ -1078,6 +1078,7 @@ async function createGroupBooking(){
   msg("Creating booking...");
   try{
     await ensureGroupQuote();
+    const attribution=window.kokoGetAttribution?window.kokoGetAttribution():{};
     const payload={
       location_slug:window.groupBookingState.location_slug,
       date:window.groupBookingState.date,
@@ -1090,7 +1091,12 @@ async function createGroupBooking(){
       customer_phone:window.groupBookingState.customer_phone,
       customer_email:window.groupBookingState.customer_email,
       booking_notes:window.groupBookingState.booking_notes,
-      referral_code:window.groupBookingState.referral_code
+      referral_code:window.groupBookingState.referral_code,
+      utm_source:attribution.utm_source,
+      utm_medium:attribution.utm_medium,
+      utm_campaign:attribution.utm_campaign,
+      landing_referrer:attribution.landing_referrer,
+      entry_page:attribution.entry_page
     };
     const r=await fetch(BASE_URL + "/CreateGroupBooking",{
       method:"POST",

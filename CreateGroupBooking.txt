@@ -20,6 +20,13 @@ query CreateGroupBooking verb=POST {
         text customer_email
         text booking_notes?
         text referral_code?
+
+        // ---- Booking source / marketing channel (read-only, for reporting) ----
+        text utm_source?
+        text utm_medium?
+        text utm_campaign?
+        text landing_referrer?
+        text entry_page?
       }
     }
   }
@@ -545,6 +552,11 @@ query CreateGroupBooking verb=POST {
             applied_credit_id         : $applied_credit_id
             referral_code_used        : $referral_code_used
             referral_code             : ""
+            utm_source                : $input.payload.utm_source
+            utm_medium                : $input.payload.utm_medium
+            utm_campaign              : $input.payload.utm_campaign
+            landing_referrer          : $input.payload.landing_referrer
+            entry_page                : $input.payload.entry_page
             deposit_paid_cents        : 0
             payment_url               : ""
             stripe_session_id         : ""

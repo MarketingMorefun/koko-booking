@@ -35,7 +35,12 @@ const HEADERS = [
   "package_id",
   "calendar_event_id",
   "calendar_sync_signature",
-  "new_booking_email_sent"
+  "new_booking_email_sent",
+  "entry_page",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "landing_referrer"
 ];
 
 // Matches Xano "Locations" table (id -> name)
@@ -198,7 +203,12 @@ function syncBookingsFromXano() {
       // bookings with no prior calendar event are left blank so they can
       // trigger a real first-time send in upsertCalendarEventForRow.
       existingBooking.newBookingEmailSent ||
-        (existingBooking.calendarEventId ? "grandfathered (pre-existing booking)" : "")
+        (existingBooking.calendarEventId ? "grandfathered (pre-existing booking)" : ""),
+      b.entry_page || "",
+      b.utm_source || "",
+      b.utm_medium || "",
+      b.utm_campaign || "",
+      b.landing_referrer || ""
     ];
   });
 

@@ -83,6 +83,7 @@ Bound to the "Booking Master" Google Sheet.
 | `koko-booking.js` | `/booking/birthday-party` | Full birthday-party booking flow: location → check availability → package → addons → contact (incl. optional `referralCode` field) → review (shows a discount banner if one applies) → pay. Progressively enhances existing page markup by element ID (with fallbacks), so it survives most CMS edits. State in `window.bookingState`. |
 | `koko-group-booking.js` | `/booking/group` | Same shape for group bookings (`groupReferralCode` field, guest-count stepper, add-on quantity/rules). State in `window.groupBookingState`. |
 | `koko-group-scroll.js` | `/booking/group` | Purely cosmetic: smooth-scrolls to the next section as the group flow advances. Safe to omit. |
+| `koko-attribution.js` | Homepage, `/parties`, `/booking/birthday-party`, `/booking/group` | Captures marketing channel (`utm_source`/`utm_medium`/`utm_campaign`, or a classified `landing_referrer` like `google`/`instagram`/`direct` when there's no UTM) and `entry_page` (which of the four pages above the visitor actually landed on first). First-touch, sessionStorage-based — survives the quick-booking widgets' redirect into the full flow. Exposes `window.kokoGetAttribution()`, which both flow scripts read when building the `CreateBooking`/`CreateGroupBooking` payload. Paste before the flow scripts (or site-wide in global custom code — it still only captures once per tab session). |
 | `koko-booking-embed.min.txt` | — | ⚠️ Older, minified, birthday-only booking snippet (calls `CreateBooking` but not the current `referralCode` field or the group flow) — looks superseded by `koko-booking.js`. Kept here for reference; confirm before treating as live. |
 
 ### Pricing constants (defined independently in both flow scripts — keep in sync)
@@ -148,3 +149,10 @@ shows a visible message instead of failing silently.
   incremented counter variable + `if (counter < limit)` instead.
 - Changing the **`$1.50` surcharge / `$50` deposit / `$30` discount** means editing the
   constant in every file that has its own copy — they're not shared.
+- **New booking fields (e.g. `utm_source`/`utm_medium`/`utm_campaign`/`landing_referrer`/
+  `entry_page`) need the matching column added to the `bookings` table in Xano by hand**
+  before the updated `CreateBooking`/`CreateGroupBooking` query text will save them —
+  pasting new `db.add` fields into the function stack does not create the column.
+  `BookingSheetExport` (the query `SyncBookings.gs` reads from — not mirrored in this
+  repo) also needs checking: if it lists fields explicitly rather than returning the
+  whole row, add new columns there too or they won't reach the sheet.
