@@ -1,14 +1,11 @@
 name: Booking reminders
 
+# The every-5-minute schedule now runs from Apps Script (Reminders.gs),
+# because GitHub's free scheduled runs were delayed by hours or skipped.
+# This workflow is kept only as a manual backup: Actions tab → Booking
+# reminders → Run workflow.
 on:
-  schedule:
-    - cron: '*/5 * * * *'   # every 5 min — reminder 1 goes out 15 min after an unpaid hold
-  workflow_dispatch:        # lets you trigger it manually from the Actions tab
-  push:
-    # Runs once whenever this file itself is edited, so a change to the
-    # schedule is exercised straight away instead of waiting for the cron.
-    paths:
-      - '.github/workflows/reminders.yml'
+  workflow_dispatch:
 
 jobs:
   run:

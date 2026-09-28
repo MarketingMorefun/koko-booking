@@ -24,7 +24,7 @@ Google Sheet "Booking Master"  ◄── Apps Script (SyncBookings.gs, hourly tr
         ▼
    Google Calendar (per-venue) + [NEW BOOKING] staff email
 
-GitHub Actions (.github/workflows/reminders.yml, cron every 5 min)
+Apps Script (Reminders.gs, time-driven trigger every 5 min)
         └─► POST /RunReminders   (Xano has no Background Tasks on the free plan)
 ```
 
@@ -65,7 +65,7 @@ committed here is public forever via git history: rotate it, don't just delete i
 | `ConfirmGroupBooking.txt` | `POST /ConfirmGroupBooking` | Same for group bookings (no slot re-check — group bookings don't hold an exclusive room the way birthday bookings do). |
 | `StripeWebhook.txt` | `POST /StripeWebhook` | Stripe webhook target. On `checkout.session.completed`/`async_payment_succeeded`: marks the booking `deposit_paid`, mints its `referral_code`, finalises any reserved discount credit (marks it `used`, or awards the referrer a new credit), awards the paying customer a fresh `$30` credit for next time, and sends the deposit-confirmation email (invitation download block + referral card block included). On `checkout.session.expired`: marks the booking `expired` unless it's already paid. |
 | `ResendConfirmationEmail.txt` | `POST /ResendConfirmationEmail` | Manually re-sends the exact same confirmation email as `StripeWebhook` (staff-triggered, e.g. customer says they never got it) — reads the booking's existing `referral_code` rather than minting a new one. |
-| `RunReminders.txt` | `POST /RunReminders` (secret-protected) | Abandoned-cart recovery: emails bookings still `hold`/`pending_payment` at 15 min (`reminder_1`) and 20h (`reminder_2`) old, linking to `/booking/resume`. Triggered every 5 min by GitHub Actions (Xano free plan has no Background Tasks). Only marks a reminder "sent" if Resend actually accepted it. |
+| `RunReminders.txt` | `POST /RunReminders` (secret-protected) | Abandoned-cart recovery: emails bookings still `hold`/`pending_payment` at 15 min (`reminder_1`) and 20h (`reminder_2`) old, linking to `/booking/resume`. Triggered every 5 min by an Apps Script trigger (`Reminders.gs`) — Xano free plan has no Background Tasks, and GitHub's free cron was hours late. `.github/workflows/reminders.yml` is now manual-only (Run workflow button) as a backup. Only marks a reminder "sent" if Resend actually accepted it. |
 | `BookingSheetExport.txt` | `GET /BookingSheetExport?key=` (secret-protected) | Returns every booking row for `SyncBookings.gs` to write into the Booking Master sheet. Contains all customer PII — the key is the `SHEET_EXPORT_KEY` workspace variable, never a literal. |
 | `GetReferralCard.txt` | `GET /GetReferralCard?code=` | Public, read-only lookup by `referral_code` only (no booking ID, no email/phone) — backs the printable referral card page. A stranger can't browse other customers' data without already having their code. |
 | `BackfillReferralCodesAndCredits.txt` | `POST /BackfillReferralCodesAndCredits` (secret-protected) | One-time, batched backfill: mints a `referral_code` + `$30` credit for every historical `deposit_paid`/`paid` booking that predates the referral feature, then emails each customer once (deduped per email, batched to respect Resend rate limits). Safe to call repeatedly — already-processed bookings are skipped. |
@@ -83,6 +83,7 @@ Bound to the "Booking Master" Google Sheet.
 | File | Purpose |
 |---|---|
 | `SyncBookings.gs` | Hourly trigger: pulls every booking from `BookingSheetExport`, rewrites the "Booking Master" sheet, upserts a Google Calendar event per `deposit_paid` booking (per-venue calendar, deleted if the booking un-pays), sends the `[NEW BOOKING]` staff notification email the first time a booking's calendar event is created (tracked via its own `new_booking_email_sent` column, independent of calendar success so a failed send retries), and syncs `referral_code`/`discount_aud`/`discount_reason` into the sheet. Also exposes `backfillMissingNewBookingEmails()` — a manual, non-triggered function to catch up `[NEW BOOKING]` emails for bookings that were skipped when that column was first added. |
+| `Reminders.gs` | Separate file in the same Apps Script project. `runReminders()` POSTs to `RunReminders` with Script Property `REMINDER_SECRET`; `installReminderTrigger()` (run once by hand) sets it on a 5-minute time-driven trigger. |
 | `SyncMailchimp.gs` | Syncs a separate "Form responses" sheet into Mailchimp, splitting contacts into per-store sheets/audiences by a "store name" column. Unrelated to the booking flow above. |
 
 ## Webflow — booking flow widgets (main multi-step forms)
