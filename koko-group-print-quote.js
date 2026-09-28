@@ -1,0 +1,162 @@
+/*
+ * koko-group-print-quote.js
+ *
+ * "Save this quote as a PDF" button on the /booking/group review step.
+ * Same code as koko-group-print-quote.html, packaged as a single file so it
+ * can load from jsDelivr like the flow scripts instead of being pasted inline.
+ * Load it AFTER koko-group-booking.js.
+ */
+(function(){
+  var css=".koko-print-quote-wrap{display:flex;flex-direction:column;align-items:center;margin-top:18px}\n.koko-print-quote{display:inline-flex;align-items:center;gap:8px;padding:13px 20px;border:2px solid #221d16;border-radius:16px;background:#F5D949;box-shadow:4px 4px 0 #221d16;font-weight:700;font-size:14px;color:#221d16;cursor:pointer;transition:all 140ms ease}\n.koko-print-quote:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 #221d16}\n.koko-print-quote:active{transform:translate(0,0);box-shadow:2px 2px 0 #221d16}\n.koko-print-hint{margin-top:8px;font-size:13px;color:#8a7d6a;text-align:center}\n#kokoPrintRoot{display:none;font-family:'Poppins',Arial,sans-serif}\n.koko-print-head{font-family:'Poppins',Arial,sans-serif;color:#2F241C}\n.koko-print-head strong{font-size:18px;display:block;margin-bottom:6px}\n.koko-print-head span{font-size:12px;color:#7B6A58}\n.koko-print-includes{margin:4px 0 14px;padding:12px 14px;border:1px solid #221D16;border-radius:12px;background:#FAF6EE;font-family:'Poppins',Arial,sans-serif}\n.koko-print-includes-title{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#221D16;background:#F5D949;border:1px solid #221D16;border-radius:999px;padding:3px 10px;margin-bottom:8px}\n.koko-print-includes-list{margin:0;padding:0;list-style:none;display:grid;gap:3px}\n.koko-print-includes-list li{font-size:13px;color:#2F241C;padding-left:14px;position:relative}\n.koko-print-includes-list li:before{content:\"\u2726\";position:absolute;left:0;color:#221D16;font-size:11px}\n.koko-print-custom-note{margin-top:16px;padding-top:14px;border-top:1px solid #E8DDCC;font-family:'Poppins',Arial,sans-serif;font-size:12.5px;color:#7B6A58;line-height:1.5;text-align:center}\n.koko-print-custom-note strong{color:#2F241C}\n@media print{\n  /* Remove every top-level element from layout \u2014 this is what actually stops\n     the blank pages, since visibility:hidden alone still reserves space. */\n  body>*{display:none !important}\n  #kokoPrintRoot{\n    display:block !important;\n    position:static !important;\n    width:100% !important;\n    max-width:760px !important;\n    margin:0 auto !important;\n    padding:0 !important;\n  }\n  #kokoPrintRoot *{visibility:visible !important;box-shadow:none !important;font-family:'Poppins',Arial,sans-serif !important}\n  #kokoPrintRoot .koko-print-quote-wrap{display:none !important}\n  @page{margin:10mm;size:A4}\n}\n";
+  var style=document.createElement("style");
+  style.id="kokoPrintQuoteStyles";
+  style.textContent=css;
+  (document.head||document.documentElement).appendChild(style);
+})();
+(function(){
+  var PACKAGE_INCLUDES={
+    "koko team fun 60":["60 mins Game Play","5x Claw & Prize Games","3x Feature Game","500 KOKO Tickets"],
+    "koko team max 100":["100 mins Game Play","10x Claw & Prize Games","3x Feature Game","1000 KOKO Tickets"],
+    "haymarket classic":["1 Archery Game","1 Bowling Game","1 Hour Pool Game"],
+    "haymarket package a":["1 Archery Game","1 Bowling Game","1 Hour Pool Game"],
+    "haymarket plus":["1 Archery Game","1 Bowling Game","1 Hour Pool Game","$30 KOKO Card"],
+    "haymarket package b":["1 Archery Game","1 Bowling Game","1 Hour Pool Game","$30 KOKO Card"],
+    "haymarket value":["1 Archery Game","1 Bowling Game","$30 KOKO Card"],
+    "haymarket package c":["1 Archery Game","1 Bowling Game","$30 KOKO Card"],
+    "haymarket double play":["2 Archery Game","2 Bowling Game","$30 KOKO Card"],
+    "haymarket package d":["2 Archery Game","2 Bowling Game","$30 KOKO Card"]
+  };
+  function insertIncludes(clone){
+    var pkgEl=clone.querySelector("#groupReviewPackage");
+    if(!pkgEl)return;
+    var key=(pkgEl.textContent||"").trim().toLowerCase();
+    var items=PACKAGE_INCLUDES[key];
+    if(!items||!items.length)return;
+    var box=document.createElement("div");
+    box.className="koko-print-includes";
+    var title=document.createElement("div");
+    title.className="koko-print-includes-title";
+    title.textContent="What's included";
+    box.appendChild(title);
+    var ul=document.createElement("ul");
+    ul.className="koko-print-includes-list";
+    for(var i=0;i<items.length;i++){
+      var li=document.createElement("li");
+      li.textContent=items[i];
+      ul.appendChild(li);
+    }
+    box.appendChild(ul);
+    box.style.display="block";
+    box.style.textAlign="left";
+    box.style.marginTop="8px";
+    /* Append INSIDE the existing value cell rather than inserting a new
+       sibling row — the review list relies on flat label/value pairing
+       (grid or repeated flex rows), and adding a sibling shifts every
+       row after it by one slot. */
+    pkgEl.style.display="block";
+    pkgEl.appendChild(box);
+  }
+  function removeWithEmptyAncestors(node){
+    var cur=node;
+    while(cur.parentElement){
+      var parent=cur.parentElement;
+      var meaningfulSiblings=0;
+      for(var k=0;k<parent.childNodes.length;k++){
+        var cn=parent.childNodes[k];
+        if(cn===cur)continue;
+        if(cn.nodeType===3&&!cn.textContent.trim())continue;
+        meaningfulSiblings++;
+      }
+      if(meaningfulSiblings===0)cur=parent;
+      else break;
+    }
+    if(cur.parentNode)cur.parentNode.removeChild(cur);
+  }
+  function trimFlowChrome(clone){
+    var nodes=clone.querySelectorAll("*");
+    var toRemove=[];
+    for(var i=0;i<nodes.length;i++){
+      var node=nodes[i];
+      if(node.children&&node.children.length)continue;
+      var t=(node.textContent||"").trim();
+      var tl=t.toLowerCase();
+      if(/^step\s*\d+$/i.test(t)||tl==="deposit due"||tl.indexOf("almost done")!==-1||tl==="review your booking"){
+        toRemove.push(node);
+      }
+    }
+    for(var j=0;j<toRemove.length;j++){
+      if(toRemove[j].parentNode)removeWithEmptyAncestors(toRemove[j]);
+    }
+  }
+  function stripIds(el){
+    if(!el||el.nodeType!==1)return;
+    if(el.id)el.removeAttribute("id");
+    var kids=el.children;
+    for(var i=0;i<kids.length;i++)stripIds(kids[i]);
+  }
+  function ensureRoot(){
+    var root=document.getElementById("kokoPrintRoot");
+    if(!root){
+      root=document.createElement("div");
+      root.id="kokoPrintRoot";
+      document.body.appendChild(root);
+    }
+    return root;
+  }
+  function printQuote(){
+    var sec=document.getElementById("groupReviewSection");
+    var root=ensureRoot();
+    root.innerHTML="";
+    var head=document.createElement("div");
+    head.className="koko-print-head";
+    head.innerHTML='<strong>KOKO Amusement — Group Booking Quote</strong><span>Generated '+new Date().toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"})+' · Enquiries: marketing@morefun.com.au</span>';
+    root.appendChild(head);
+    if(sec){
+      var clone=sec.cloneNode(true);
+      trimFlowChrome(clone);
+      insertIncludes(clone);
+      stripIds(clone);
+      clone.removeAttribute("style");
+      var junk=clone.querySelectorAll(".koko-print-quote-wrap");
+      for(var i=0;i<junk.length;i++)junk[i].parentNode.removeChild(junk[i]);
+      root.appendChild(clone);
+    }
+    var note=document.createElement("p");
+    note.className="koko-print-custom-note";
+    note.innerHTML="Need something custom or a personalised touch? Contact <strong>marketing@morefun.com.au</strong> and we'll help you plan it.";
+    root.appendChild(note);
+    /* Safari can snapshot the page for printing before it has finished
+       laying out content we just inserted, producing a blank PDF.
+       Two animation-frame ticks (plus a short timeout fallback) force a
+       real layout/paint pass to complete first. */
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        window.print();
+      });
+    });
+  }
+  function build(){
+    var sec=document.getElementById("groupReviewSection");
+    if(!sec||sec.getAttribute("data-print-ready"))return;
+    var payBtn=document.getElementById("groupConfirmBtn");
+    var card=(payBtn&&payBtn.parentNode)?payBtn.parentNode:sec;
+    sec.setAttribute("data-print-ready","1");
+    var wrap=document.createElement("div");
+    wrap.className="koko-print-quote-wrap";
+    var btn=document.createElement("button");
+    btn.type="button";
+    btn.className="koko-print-quote";
+    btn.textContent="↓  Save this quote as a PDF";
+    btn.addEventListener("click",printQuote);
+    var hint=document.createElement("div");
+    hint.className="koko-print-hint";
+    hint.textContent="Choose “Save as PDF” in the print dialog to send it to your manager for approval.";
+    wrap.appendChild(btn);wrap.appendChild(hint);card.appendChild(wrap);
+  }
+  function watch(){
+    var sec=document.getElementById("groupReviewSection");
+    if(sec&&sec.offsetParent!==null)build();
+  }
+  if(document.readyState!=="loading"){watch()}else{document.addEventListener("DOMContentLoaded",watch)}
+  new MutationObserver(watch).observe(document.documentElement,{attributes:true,childList:true,subtree:true,attributeFilter:["style","class"]});
+})();

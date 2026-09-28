@@ -111,7 +111,8 @@ MIN_ADVANCE_MS     = 259_200_000   // must book ≥ 72h ahead
 | File | Where | Purpose |
 |---|---|---|
 | `koko-invitation-download.html` | Birthday flow page | "Download the invitation" PNG/PDF buttons. |
-| `koko-group-print-quote.html` | `/booking/group`, below `koko-group-booking.js` | "Save this quote as a PDF" button on the group review step. |
+| `koko-group-print-quote.js` | `/booking/group`, loaded after `koko-group-booking.js` | "Save this quote as a PDF" button on the group review step — loaded from jsDelivr like the flow scripts. Injects its own `<style>`. |
+| `koko-group-print-quote.html` | — | The same button as an inline paste-in snippet (the original form). Superseded by the `.js` above; keep the two in sync or delete this one once the page uses the `.js`. |
 | `koko-location-select.js` | Any page with a `<select>` | Restyles native `<select>` elements as a custom dropdown (single or checkbox-multi if the select has `multiple`). |
 
 ---
