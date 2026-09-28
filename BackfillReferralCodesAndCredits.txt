@@ -27,16 +27,11 @@ query BackfillReferralCodesAndCredits verb=POST {
   }
 
   stack {
-    // Resend API key lives in the Xano table api_keys (row name = "resend"),
-    // the same way Stripe keys live in stripe_location_keys — so pasting this
-    // query into Xano never overwrites the real key with a placeholder again.
-    db.get api_keys {
-      field_name = "name"
-      field_value = "resend"
-    } as $ResendKey
-
+    // Resend API key comes from the Xano workspace variable RESEND_API_KEY
+    // (Settings → Workspace Variables), so pasting this query into Xano
+    // never overwrites the real key with a placeholder.
     var $resend_auth_header {
-      value = "Authorization: Bearer "|concat:($ResendKey.api_key|first_notnull:""):""
+      value = "Authorization: Bearer "|concat:$env.RESEND_API_KEY:""
     }
     var $error_message {
       value = null
