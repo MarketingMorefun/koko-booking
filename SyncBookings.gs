@@ -1,4 +1,7 @@
-const XANO_EXPORT_KEY = "kk9x2mQ7vL4nR8pT1wZ5jY3fH6bC0dS";
+// Stored in Apps Script → Project Settings → Script Properties, never in
+// this file (the repo is public). Must match Xano workspace variable
+// SHEET_EXPORT_KEY, which BookingSheetExport checks against.
+const XANO_EXPORT_KEY = PropertiesService.getScriptProperties().getProperty("XANO_EXPORT_KEY");
 const XANO_EXPORT_URL = "https://x8ki-letl-twmt.n7.xano.io/api:KARDPSrJ/BookingSheetExport?key=" + XANO_EXPORT_KEY;
 const MASTER_SHEET_NAME = "Booking Master";
 
@@ -104,6 +107,10 @@ const ADDON_NAME_MAP = {
 };
 
 function syncBookingsFromXano() {
+  if (!XANO_EXPORT_KEY) {
+    throw new Error("Missing Script Property XANO_EXPORT_KEY (Project Settings → Script Properties).");
+  }
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(MASTER_SHEET_NAME);
 

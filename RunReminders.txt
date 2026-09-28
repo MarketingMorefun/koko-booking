@@ -42,7 +42,10 @@ query RunReminders verb=POST {
     }
 
     conditional {
-      if ($input.secret != "rm9K2vXpQ7bN4wT8jL1cY6hF3sD0aZ5g") {
+      // Secret = Xano workspace variable REMINDER_SECRET (same value as the
+      // GitHub Actions secret of the same name). Never hardcode it here —
+      // this repo is public.
+      if ($input.secret == null || $input.secret == "" || $input.secret != $env.REMINDER_SECRET) {
         var $error_message {
           value = "Unauthorized"
         }

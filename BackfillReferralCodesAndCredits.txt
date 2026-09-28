@@ -66,7 +66,9 @@ query BackfillReferralCodesAndCredits verb=POST {
     }
 
     conditional {
-      if ($input.secret != "kR7mP2vXqL9wZ4jN6bT0dS3fH8cY1aG5") {
+      // Secret = Xano workspace variable BACKFILL_SECRET. Leave that variable
+      // unset and this endpoint refuses every call (the backfill is done).
+      if ($input.secret == null || $input.secret == "" || $input.secret != $env.BACKFILL_SECRET) {
         var $error_message {
           value = "Unauthorized"
         }

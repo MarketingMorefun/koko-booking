@@ -46,6 +46,12 @@ Resend: workspace variable `RESEND_API_KEY` (Settings → Workspace Variables), 
 `$env.RESEND_API_KEY` by every email-sending query. Stripe: `stripe_location_keys` table
 (per location). Pasting any `.txt` here into Xano is safe — there's no placeholder to
 swap back. To rotate the Resend key, change the workspace variable.
+The same goes for the endpoint secrets: `RunReminders` checks `$env.REMINDER_SECRET`
+(must equal the GitHub Actions secret `REMINDER_SECRET`), `BookingSheetExport` checks
+`$env.SHEET_EXPORT_KEY` (must equal the Apps Script Script Property `XANO_EXPORT_KEY`),
+and `BackfillReferralCodesAndCredits` checks `$env.BACKFILL_SECRET` (left unset on
+purpose — the backfill is done, so it refuses every call). Any secret that was ever
+committed here is public forever via git history: rotate it, don't just delete it.
 
 ---
 
