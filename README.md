@@ -24,7 +24,7 @@ Google Sheet "Booking Master"  ◄── Apps Script (SyncBookings.gs, hourly tr
         ▼
    Google Calendar (per-venue) + [NEW BOOKING] staff email
 
-GitHub Actions (.github/workflows/reminders.yml, hourly cron)
+GitHub Actions (.github/workflows/reminders.yml, cron every 5 min)
         └─► POST /RunReminders   (Xano has no Background Tasks on the free plan)
 ```
 
@@ -57,7 +57,7 @@ committed here (GitHub's push protection blocks it, and it'd be a public leak an
 | `ConfirmGroupBooking.txt` | `POST /ConfirmGroupBooking` | Same for group bookings (no slot re-check — group bookings don't hold an exclusive room the way birthday bookings do). |
 | `StripeWebhook.txt` | `POST /StripeWebhook` | Stripe webhook target. On `checkout.session.completed`/`async_payment_succeeded`: marks the booking `deposit_paid`, mints its `referral_code`, finalises any reserved discount credit (marks it `used`, or awards the referrer a new credit), awards the paying customer a fresh `$30` credit for next time, and sends the deposit-confirmation email (invitation download block + referral card block included). On `checkout.session.expired`: marks the booking `expired` unless it's already paid. |
 | `ResendConfirmationEmail.txt` | `POST /ResendConfirmationEmail` | Manually re-sends the exact same confirmation email as `StripeWebhook` (staff-triggered, e.g. customer says they never got it) — reads the booking's existing `referral_code` rather than minting a new one. |
-| `RunReminders.txt` | `POST /RunReminders` (secret-protected) | Abandoned-cart recovery: emails bookings still `hold`/`pending_payment` at 1h (`reminder_1`) and 20h (`reminder_2`) old, linking to `/booking/resume`. Triggered hourly by GitHub Actions (Xano free plan has no Background Tasks). Only marks a reminder "sent" if Resend actually accepted it. |
+| `RunReminders.txt` | `POST /RunReminders` (secret-protected) | Abandoned-cart recovery: emails bookings still `hold`/`pending_payment` at 15 min (`reminder_1`) and 20h (`reminder_2`) old, linking to `/booking/resume`. Triggered every 5 min by GitHub Actions (Xano free plan has no Background Tasks). Only marks a reminder "sent" if Resend actually accepted it. |
 | `GetReferralCard.txt` | `GET /GetReferralCard?code=` | Public, read-only lookup by `referral_code` only (no booking ID, no email/phone) — backs the printable referral card page. A stranger can't browse other customers' data without already having their code. |
 | `BackfillReferralCodesAndCredits.txt` | `POST /BackfillReferralCodesAndCredits` (secret-protected) | One-time, batched backfill: mints a `referral_code` + `$30` credit for every historical `deposit_paid`/`paid` booking that predates the referral feature, then emails each customer once (deduped per email, batched to respect Resend rate limits). Safe to call repeatedly — already-processed bookings are skipped. |
 
@@ -65,7 +65,7 @@ committed here (GitHub's push protection blocks it, and it'd be a public leak an
 
 | File | Purpose |
 |---|---|
-| `expire_stale_holds.txt` | Called via `function.run` from `CreateBooking`/`CreateGroupBooking`. Sweeps `hold`/`pending_payment` bookings older than 24h to `expired` (must stay 24h — the reminder emails at 1h/20h rely on the booking still reading `hold`/`pending_payment` that whole window). Releases any credit that booking had reserved back to `available` so it isn't stranded. |
+| `expire_stale_holds.txt` | Called via `function.run` from `CreateBooking`/`CreateGroupBooking`. Sweeps `hold`/`pending_payment` bookings older than 24h to `expired` (must stay 24h — the reminder emails at 15 min/20h rely on the booking still reading `hold`/`pending_payment` that whole window). Releases any credit that booking had reserved back to `available` so it isn't stranded. |
 
 ## Google Apps Script
 

@@ -12,7 +12,7 @@ function expire_stale_holds {
     }
 
     // Only give up on a hold after 24 hours — this must stay aligned with
-    // the abandoned-cart reminder emails (sent at 1h and 20h), which rely
+    // the abandoned-cart reminder emails (sent at 15 min and 20h), which rely
     // on the booking still reading status "hold"/"pending_payment" all the
     // way up to 24h.
     //

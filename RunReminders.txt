@@ -23,8 +23,8 @@ query RunReminders verb=POST {
     }
 
     // Window edges (all relative to now, in ms)
-    var $one_hour_ago {
-      value = `$now_ts|add_ms_to_timestamp:-3600000`
+    var $fifteen_min_ago {
+      value = `$now_ts|add_ms_to_timestamp:-900000`
     }
 
     var $twenty_hours_ago {
@@ -44,10 +44,13 @@ query RunReminders verb=POST {
 
       else {
         // ============================================================
-        // REMINDER 1 — sent 1h to 24h after the hold was created
+        // REMINDER 1 — sent 15 min to 24h after the hold was created
+        // (15 min = when the exclusive room/slot hold lapses, see
+        // hold_expires_at_ts in CreateBooking; the cron runs every 5 min,
+        // so in practice this lands ~15–20 min after they stopped)
         // ============================================================
         db.query bookings {
-          where = ($db.bookings.status == "hold" || $db.bookings.status == "pending_payment") && $db.bookings.reminder_1_sent == false && $db.bookings.customer_email != "" && $db.bookings.created_at < $one_hour_ago && $db.bookings.created_at > $twentyfour_hours_ago
+          where = ($db.bookings.status == "hold" || $db.bookings.status == "pending_payment") && $db.bookings.reminder_1_sent == false && $db.bookings.customer_email != "" && $db.bookings.created_at < $fifteen_min_ago && $db.bookings.created_at > $twentyfour_hours_ago
           return = {type: "list"}
         } as $Reminder1Bookings
 
