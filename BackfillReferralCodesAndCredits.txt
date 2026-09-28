@@ -27,6 +27,17 @@ query BackfillReferralCodesAndCredits verb=POST {
   }
 
   stack {
+    // Resend API key lives in the Xano table api_keys (row name = "resend"),
+    // the same way Stripe keys live in stripe_location_keys — so pasting this
+    // query into Xano never overwrites the real key with a placeholder again.
+    db.get api_keys {
+      field_name = "name"
+      field_value = "resend"
+    } as $ResendKey
+
+    var $resend_auth_header {
+      value = "Authorization: Bearer "|concat:($ResendKey.api_key|first_notnull:""):""
+    }
     var $error_message {
       value = null
     }
@@ -211,7 +222,7 @@ query BackfillReferralCodesAndCredits verb=POST {
                             html   : $email_html
                           }
                           headers = []
-                            |push:"Authorization: Bearer re_YOUR_RESEND_API_KEY"
+                            |push:$resend_auth_header
                             |push:"Content-Type: application/json"
                         } as $SendResult
 

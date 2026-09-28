@@ -41,9 +41,11 @@ GitHub Actions (.github/workflows/reminders.yml, cron every 5 min)
 - **Money:** always cents (`int ..._cents`). Deposit is `$50.00` (`5000`), card
   surcharge `$1.50` (`150`), referral/repeat-customer discount `$30.00` (`3000`).
 
-⚠️ Every file with a Resend/API key placeholder (`re_YOUR_RESEND_API_KEY`) needs the
-**real** key swapped in by hand after pasting into Xano — the real key is never
-committed here (GitHub's push protection blocks it, and it'd be a public leak anyway).
+🔑 **API keys live in Xano tables, never in this repo** (it's public — jsDelivr needs
+that). Stripe keys: `stripe_location_keys` (per location). Resend key: `api_keys`, row
+`name = "resend"`, column `api_key` — every email-sending query reads it with
+`db.get api_keys` at the top of its stack. Pasting any `.txt` here into Xano is safe;
+there's no placeholder to swap back. To rotate the Resend key, edit that one row.
 
 ---
 
