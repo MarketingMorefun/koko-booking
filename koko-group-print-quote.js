@@ -80,7 +80,7 @@
       if(node.children&&node.children.length)continue;
       var t=(node.textContent||"").trim();
       var tl=t.toLowerCase();
-      if(/^step\s*\d+$/i.test(t)||tl==="deposit due"||tl.indexOf("almost done")!==-1||tl==="review your booking"){
+      if(/^step\s*\d+$/i.test(t)||tl==="deposit due"||tl==="booking fee due"||tl.indexOf("almost done")!==-1||tl==="review your booking"){
         toRemove.push(node);
       }
     }

@@ -38,8 +38,10 @@ Apps Script (Reminders.gs, time-driven trigger every 5 min)
 - **CDN:** frontend `.js` is hosted via jsDelivr from this repo
   (`cdn.jsdelivr.net/gh/MarketingMorefun/koko-booking@<commit>/...`) — always
   reference a commit hash, not `@main`, or the CDN serves a stale cached copy.
-- **Money:** always cents (`int ..._cents`). Deposit is `$50.00` (`5000`), card
-  surcharge `$1.50` (`150`), referral/repeat-customer discount `$30.00` (`3000`).
+- **Money:** always cents (`int ..._cents`). The `$50.00` booking fee (`5000`) — called
+  "deposit" in field/status names (`deposit_paid_cents`, `deposit_paid`), "booking fee" in
+  everything customers see. No card surcharge any more (`SURCHARGE_CENTS = 0`).
+  Referral/repeat-customer discount `$30.00` (`3000`).
 
 🔑 **API keys live in Xano, never in this repo** (it's public — jsDelivr needs that).
 Resend: workspace variable `RESEND_API_KEY` (Settings → Workspace Variables), read as
@@ -99,9 +101,9 @@ Bound to the "Booking Master" Google Sheet.
 ### Pricing constants (defined independently in both flow scripts — keep in sync)
 
 ```js
-DEPOSIT_CENTS      = 5000   // $50.00 refundable deposit
-SURCHARGE_CENTS    = 150    // $1.50 card surcharge
-PAYABLE_NOW_CENTS  = 5150   // $51.50 charged now (deposit + surcharge)
+DEPOSIT_CENTS      = 5000   // $50.00 non-refundable booking fee
+SURCHARGE_CENTS    = 0      // card surcharge no longer allowed
+PAYABLE_NOW_CENTS  = 5000   // $50.00 charged now (booking fee only)
 MIN_ADVANCE_MS     = 259_200_000   // must book ≥ 72h ahead
 ```
 
@@ -158,7 +160,7 @@ shows a visible message instead of failing silently.
   (`array.filter`/`array.find` after a plain `db.query`).
 - **`array.slice` is not a real Xano function** — batch a `foreach` with a manually
   incremented counter variable + `if (counter < limit)` instead.
-- Changing the **`$1.50` surcharge / `$50` deposit / `$30` discount** means editing the
+- Changing the **`$50` booking fee / surcharge / `$30` discount** means editing the
   constant in every file that has its own copy — they're not shared.
 - **New booking fields (e.g. `utm_source`/`utm_medium`/`utm_campaign`/`landing_referrer`/
   `entry_page`) need the matching column added to the `bookings` table in Xano by hand**

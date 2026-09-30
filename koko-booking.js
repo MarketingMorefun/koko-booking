@@ -1,7 +1,7 @@
 (function(){
 const BASE_URL="https://x8ki-letl-twmt.n7.xano.io/api:KARDPSrJ";
 const DEPOSIT_CENTS=5000;
-const SURCHARGE_CENTS=150;
+const SURCHARGE_CENTS=0; // card surcharge no longer allowed — keep at 0
 const PAYABLE_NOW_CENTS=DEPOSIT_CENTS+SURCHARGE_CENTS;
 const MIN_PARTY_SIZE=10;
 const MIN_ADVANCE_MS=259200000;
@@ -910,7 +910,7 @@ const packageTotalCents=Number(b.package_total_cents!=null?b.package_total_cents
 const addonsTotalCents=Number(b.addons_total_cents!=null?b.addons_total_cents:q.addons_total_cents||0);
 const grand=Number(b.grand_total_cents!=null?b.grand_total_cents:q.grand_total_cents||0);
 const discountCents=Number(b.discount_cents||0),remain=Math.max(grand-DEPOSIT_CENTS-discountCents,0);
-reviewText("reviewStatus","Deposit required");
+reviewText("reviewStatus","Booking fee required");
 reviewText("reviewLocation",locName(window.bookingState.location_slug));
 reviewText("reviewDate",window.bookingState.date);
 reviewText("reviewGuests",String(window.bookingState.guests||"-"));
@@ -963,11 +963,12 @@ function injectSurchargeBreakdown(btn){
 if(!btn||!btn.parentNode)return;
 const old=document.getElementById("kokoSurchargeBreakdown");
 if(old)old.remove();
+if(!SURCHARGE_CENTS)return; // nothing to break down: pay button already shows the one amount
 const box=document.createElement("div");
 box.id="kokoSurchargeBreakdown";
 box.style.cssText="margin:0 0 14px;padding:14px 16px;border:1px solid #E8DDCC;border-radius:14px;background:#FFFBF5;font-family:'Maven Pro',Arial,sans-serif;font-size:14px;color:#2F241C;box-sizing:border-box;";
 const row=(label,value,bold)=>"<div style=\"display:flex;justify-content:space-between;align-items:center;"+(bold?"font-weight:900;margin-top:8px;padding-top:8px;border-top:1px solid #E8DDCC;":"font-weight:600;color:#7B6A58;margin-bottom:6px;")+"\"><span>"+label+"</span><span>"+value+"</span></div>";
-box.innerHTML=row("Deposit",money(DEPOSIT_CENTS))+row("Card surcharge",money(SURCHARGE_CENTS))+row("Total payable now",money(PAYABLE_NOW_CENTS),true);
+box.innerHTML=row("Booking fee",money(DEPOSIT_CENTS))+row("Card surcharge",money(SURCHARGE_CENTS))+row("Total payable now",money(PAYABLE_NOW_CENTS),true);
 btn.parentNode.insertBefore(box,btn);
 }
 let _bookingInProgress=false;
@@ -1007,7 +1008,7 @@ data.raw
 if(data.error_message)return msg(data.error_message,true);
 window.bookingState.booking=data.booking||data;
 renderReview();
-msg("Booking created. Please review and pay your $51.50 deposit (incl. $1.50 card surcharge).");
+msg("Booking created. Please review and pay your "+money(PAYABLE_NOW_CENTS)+" booking fee.");
 }catch(e){
 msg(e.message||"Failed to create booking.",true);
 }finally{
@@ -1020,8 +1021,8 @@ if(!window.bookingState.booking)return msg("Please create a booking first.",true
 const id=bookingId(window.bookingState.booking);
 if(!id)return msg("Booking ID not found in CreateBooking response.",true);
 const btn=$("confirmBookingBtn")||$("confitmBookingBtn")||document.querySelector("[data-koko-action='confirm-booking']");
-if(btn){btn.style.pointerEvents="none";btn.style.opacity=".75";btn.textContent="Redirecting to deposit payment..."}
-msg("Preparing your $51.50 payment...");
+if(btn){btn.style.pointerEvents="none";btn.style.opacity=".75";btn.textContent="Redirecting to payment..."}
+msg("Preparing your "+money(PAYABLE_NOW_CENTS)+" payment...");
 try{
 const r=await fetch(`${BASE_URL}/ConfirmBooking`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload:{booking_id:id}})});
 const text=await r.text();
@@ -1029,18 +1030,18 @@ if(!text.trim())throw new Error("ConfirmBooking API returned an empty response."
 const data=JSON.parse(text);
 if(!r.ok||data.error_message){
 msg(data.message||data.error_message||"Failed to confirm booking.",true);
-if(btn){btn.style.pointerEvents="auto";btn.style.opacity="1";btn.textContent="Pay $51.50"}
+if(btn){btn.style.pointerEvents="auto";btn.style.opacity="1";btn.textContent="Pay "+money(PAYABLE_NOW_CENTS)}
 return;
 }
 window.bookingState.booking=data.booking||data;
 renderReview();
 const url=payUrl(data);
-if(url){msg("Redirecting to deposit payment...");location.assign(url);return}
+if(url){msg("Redirecting to payment...");location.assign(url);return}
 msg("Booking was created, but no payment URL was returned. Please check Xano ConfirmBooking response.",true);
-if(btn){btn.style.pointerEvents="auto";btn.style.opacity="1";btn.textContent="Pay $51.50"}
+if(btn){btn.style.pointerEvents="auto";btn.style.opacity="1";btn.textContent="Pay "+money(PAYABLE_NOW_CENTS)}
 }catch(e){
-msg("Failed to prepare deposit payment.",true);
-if(btn){btn.style.pointerEvents="auto";btn.style.opacity="1";btn.textContent="Pay $51.50"}
+msg("Failed to prepare payment.",true);
+if(btn){btn.style.pointerEvents="auto";btn.style.opacity="1";btn.textContent="Pay "+money(PAYABLE_NOW_CENTS)}
 }
 }
 function confirmBtn(target){
@@ -1049,7 +1050,7 @@ if(direct)return direct;
 const b=target.closest("button,a,.w-button,input[type='submit'],input[type='button']");
 if(!b)return null;
 const label=(b.value||b.textContent||"").trim().toLowerCase();
-return["confirm booking","pay $50 deposit","pay $51.50","pay deposit","confirm booking with $50 deposit"].includes(label)?b:null;
+return["confirm booking","pay $50 deposit","pay $51.50","pay deposit","confirm booking with $50 deposit","pay $50.00","pay booking fee","confirm booking with $50 booking fee"].includes(label)?b:null;
 }
 function createBtn(target){
 const direct=target.closest("#createBookingBtn,[data-koko-action='create-booking'],[data-koko-action='review-booking']");
