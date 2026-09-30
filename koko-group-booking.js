@@ -1,7 +1,7 @@
 (function(){
 const BASE_URL="https://x8ki-letl-twmt.n7.xano.io/api:KARDPSrJ";
 const DEPOSIT_CENTS=5000;
-const SURCHARGE_CENTS=0; // card surcharge no longer allowed — keep at 0
+const SURCHARGE_CENTS=150;
 const PAYABLE_NOW_CENTS=DEPOSIT_CENTS+SURCHARGE_CENTS;
 const MIN_ADVANCE_MS=72*60*60*1000;
 const DEFAULT_SESSION_MINUTES=30;
@@ -1111,7 +1111,7 @@ async function createGroupBooking(){
     window.groupBookingState.booking=data.booking || data;
     renderGroupReview();
     show("groupReviewSection");
-    msg("Booking created. Please review and pay your booking fee.");
+    msg("Booking created. Please review and pay your deposit.");
     scrollToSection(["groupReviewSection","reviewSection"],500);
   }catch(e){
     console.error("Create group booking failed:",e);
@@ -1182,12 +1182,11 @@ function injectSurchargeBreakdown(btn){
   if(!btn||!btn.parentNode)return;
   const old=document.getElementById("kokoGroupSurchargeBreakdown");
   if(old)old.remove();
-  if(!SURCHARGE_CENTS)return; // nothing to break down: pay button already shows the one amount
   const box=document.createElement("div");
   box.id="kokoGroupSurchargeBreakdown";
   box.style.cssText="margin:0 0 14px;padding:14px 16px;border:1px solid #E8DDCC;border-radius:14px;background:#FFFBF5;font-family:'Maven Pro',Arial,sans-serif;font-size:14px;color:#2F241C;box-sizing:border-box;";
   const row=function(label,value,bold){return "<div style=\"display:flex;justify-content:space-between;align-items:center;"+(bold?"font-weight:900;margin-top:8px;padding-top:8px;border-top:1px solid #E8DDCC;":"font-weight:600;color:#7B6A58;margin-bottom:6px;")+"\"><span>"+label+"</span><span>"+value+"</span></div>";};
-  box.innerHTML=row("Booking fee",money(DEPOSIT_CENTS))+row("Card surcharge",money(SURCHARGE_CENTS))+row("Total payable now",money(PAYABLE_NOW_CENTS),true);
+  box.innerHTML=row("Deposit",money(DEPOSIT_CENTS))+row("Card surcharge",money(SURCHARGE_CENTS))+row("Total payable now",money(PAYABLE_NOW_CENTS),true);
   btn.parentNode.insertBefore(box,btn);
 }
 
@@ -1197,7 +1196,7 @@ async function confirmGroupBooking(){
   if(!id){return msg("Please create a booking first.",true);}
   const btn=$("groupConfirmBtn");
   if(btn){btn.style.pointerEvents="none";btn.style.opacity=".75";btn.textContent="Redirecting to payment...";}
-  msg("Preparing payment...");
+  msg("Preparing deposit payment...");
   try{
     const payload={booking_id:id,booking:booking};
     const r=await fetch(BASE_URL + "/ConfirmGroupBooking",{

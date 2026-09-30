@@ -59,11 +59,8 @@ query ConfirmBooking verb=POST {
       value = 5000
     }
 
-    // Card surcharge is no longer allowed — customers pay the $50 booking
-    // fee only. Kept as a 0 variable so surcharge_cents on the booking and
-    // the Stripe metadata still read 0 rather than disappearing.
     var $surcharge_cents {
-      value = 0
+      value = 150
     }
 
     var $remaining_balance_cents {
@@ -228,7 +225,11 @@ query ConfirmBooking verb=POST {
                         |set:"line_items[0][quantity]":1
                         |set:"line_items[0][price_data][currency]":"aud"
                         |set:"line_items[0][price_data][unit_amount]":$deposit_cents
-                        |set:"line_items[0][price_data][product_data][name]":"KOKO Party Booking Fee"
+                        |set:"line_items[0][price_data][product_data][name]":"KOKO Party Booking Deposit"
+                        |set:"line_items[1][quantity]":1
+                        |set:"line_items[1][price_data][currency]":"aud"
+                        |set:"line_items[1][price_data][unit_amount]":$surcharge_cents
+                        |set:"line_items[1][price_data][product_data][name]":"Card Surcharge"
                         |set:"metadata[booking_id]":$Booking.id
                         |set:"metadata[location_id]":$Booking.location_id
                         |set:"metadata[package_id]":$Booking.package_id
