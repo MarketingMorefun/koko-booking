@@ -967,7 +967,7 @@ const box=document.createElement("div");
 box.id="kokoSurchargeBreakdown";
 box.style.cssText="margin:0 0 14px;padding:14px 16px;border:1px solid #E8DDCC;border-radius:14px;background:#FFFBF5;font-family:'Maven Pro',Arial,sans-serif;font-size:14px;color:#2F241C;box-sizing:border-box;";
 const row=(label,value,bold)=>"<div style=\"display:flex;justify-content:space-between;align-items:center;"+(bold?"font-weight:900;margin-top:8px;padding-top:8px;border-top:1px solid #E8DDCC;":"font-weight:600;color:#7B6A58;margin-bottom:6px;")+"\"><span>"+label+"</span><span>"+value+"</span></div>";
-box.innerHTML=row("Deposit",money(DEPOSIT_CENTS))+row("Card surcharge",money(SURCHARGE_CENTS))+row("Total payable now",money(PAYABLE_NOW_CENTS),true);
+box.innerHTML=row("Deposit",money(DEPOSIT_CENTS))+row("Booking fee",money(SURCHARGE_CENTS))+row("Total payable now",money(PAYABLE_NOW_CENTS),true);
 btn.parentNode.insertBefore(box,btn);
 }
 let _bookingInProgress=false;
@@ -1007,7 +1007,7 @@ data.raw
 if(data.error_message)return msg(data.error_message,true);
 window.bookingState.booking=data.booking||data;
 renderReview();
-msg("Booking created. Please review and pay your $51.50 deposit (incl. $1.50 card surcharge).");
+msg("Booking created. Please review and pay your $51.50 deposit (incl. $1.50 booking fee).");
 }catch(e){
 msg(e.message||"Failed to create booking.",true);
 }finally{

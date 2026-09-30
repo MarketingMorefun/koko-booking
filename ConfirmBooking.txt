@@ -229,7 +229,7 @@ query ConfirmBooking verb=POST {
                         |set:"line_items[1][quantity]":1
                         |set:"line_items[1][price_data][currency]":"aud"
                         |set:"line_items[1][price_data][unit_amount]":$surcharge_cents
-                        |set:"line_items[1][price_data][product_data][name]":"Card Surcharge"
+                        |set:"line_items[1][price_data][product_data][name]":"Booking Fee"
                         |set:"metadata[booking_id]":$Booking.id
                         |set:"metadata[location_id]":$Booking.location_id
                         |set:"metadata[package_id]":$Booking.package_id

@@ -100,7 +100,7 @@ Bound to the "Booking Master" Google Sheet.
 
 ```js
 DEPOSIT_CENTS      = 5000   // $50.00 refundable deposit
-SURCHARGE_CENTS    = 150    // $1.50 card surcharge
+SURCHARGE_CENTS    = 150    // $1.50 booking fee (shown as "Booking fee", not "card surcharge")
 PAYABLE_NOW_CENTS  = 5150   // $51.50 charged now (deposit + surcharge)
 MIN_ADVANCE_MS     = 259_200_000   // must book ≥ 72h ahead
 ```
