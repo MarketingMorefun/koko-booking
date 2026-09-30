@@ -847,11 +847,32 @@ getQuote(q.type,q.load);
 }
 }
 }
+// Opt-in marketing consent checkbox, injected just above the Review button
+// on the "Your details" step (no Webflow markup needed). Unticked by
+// default — consent has to be an active choice.
+function ensureMarketingConsent(btnId,inputId){
+  if(document.getElementById(inputId))return;
+  const btn=document.getElementById(btnId);
+  if(!btn||!btn.parentNode)return;
+  const wrap=document.createElement("label");
+  wrap.className="koko-marketing-consent";
+  wrap.style.cssText="display:flex;align-items:flex-start;gap:10px;margin:4px 0 16px;font-family:'Maven Pro',Arial,sans-serif;font-size:14px;line-height:1.45;color:#7B6A58;cursor:pointer;text-align:left;";
+  const box=document.createElement("input");
+  box.type="checkbox";
+  box.id=inputId;
+  box.style.cssText="width:18px;height:18px;margin:1px 0 0;flex:0 0 auto;accent-color:#221D16;cursor:pointer;";
+  const text=document.createElement("span");
+  text.textContent="Yes, send me KOKO news, offers and party ideas by email. You can unsubscribe anytime.";
+  wrap.appendChild(box);
+  wrap.appendChild(text);
+  btn.parentNode.insertBefore(wrap,btn);
+}
 function validateContact(){
 const name=val("customerName").trim(),phone=val("customerPhone").trim(),email=val("customerEmail").trim();
 const childName=val("birthdayChildName").trim();
 const gender=val("birthdayChildGender").trim(),age=val("averageAge").trim(),notes=val("bookingNotes").trim();
 const referralCode=val("referralCode").trim();
+const consentBox=document.getElementById("marketingConsent");
 ["customerName","customerPhone","customerEmail","birthdayChildName","birthdayChildGender","averageAge"].forEach(id=>clearFieldError(id));
 const fail=(id,message)=>{
 setFieldError(id,message);
@@ -868,7 +889,7 @@ if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return fail("customerEmail","Please
 if(!childName)return fail("birthdayChildName","Please enter the birthday child's name.");
 if(!gender)return fail("birthdayChildGender","Please select the birthday child's gender.");
 if(!age)return fail("averageAge","Please enter the average age of guests.");
-Object.assign(window.bookingState,{customer_name:name,customer_phone:phone,customer_email:email,birthday_child_name:childName,birthday_child_gender:gender,average_age:age,booking_notes:notes,referral_code:referralCode});
+Object.assign(window.bookingState,{customer_name:name,customer_phone:phone,customer_email:email,birthday_child_name:childName,birthday_child_gender:gender,average_age:age,booking_notes:notes,referral_code:referralCode,marketing_consent:!!(consentBox&&consentBox.checked)});
 return true;
 }
 function compactPayload(obj){
@@ -989,7 +1010,7 @@ try{
 const hasPartyRoomAddon=window.bookingState.addons.some(a=>Number(a.addon_id)===7&&Number(a.qty||0)>0);
 const effectiveEndTs=hasPartyRoomAddon?Number(window.bookingState.end_ts)+3600000:window.bookingState.end_ts;
 const attribution=window.kokoGetAttribution?window.kokoGetAttribution():{};
-const payload=compactPayload({location_slug:window.bookingState.location_slug,date:window.bookingState.date,guests:Number(window.bookingState.guests||0),party_room_id:window.bookingState.party_room_id,start_ts:window.bookingState.start_ts,end_ts:effectiveEndTs,package_id:window.bookingState.package_id,addons:quoteAddons(),customer_name:window.bookingState.customer_name,customer_phone:window.bookingState.customer_phone,customer_email:window.bookingState.customer_email,birthday_child_name:window.bookingState.birthday_child_name,birthday_child_gender:window.bookingState.birthday_child_gender,average_age:window.bookingState.average_age?Number(window.bookingState.average_age):undefined,booking_notes:window.bookingState.booking_notes,referral_code:window.bookingState.referral_code,utm_source:attribution.utm_source,utm_medium:attribution.utm_medium,utm_campaign:attribution.utm_campaign,landing_referrer:attribution.landing_referrer,entry_page:attribution.entry_page});
+const payload=compactPayload({location_slug:window.bookingState.location_slug,date:window.bookingState.date,guests:Number(window.bookingState.guests||0),party_room_id:window.bookingState.party_room_id,start_ts:window.bookingState.start_ts,end_ts:effectiveEndTs,package_id:window.bookingState.package_id,addons:quoteAddons(),customer_name:window.bookingState.customer_name,customer_phone:window.bookingState.customer_phone,customer_email:window.bookingState.customer_email,birthday_child_name:window.bookingState.birthday_child_name,birthday_child_gender:window.bookingState.birthday_child_gender,average_age:window.bookingState.average_age?Number(window.bookingState.average_age):undefined,booking_notes:window.bookingState.booking_notes,referral_code:window.bookingState.referral_code,marketing_consent:window.bookingState.marketing_consent===true,utm_source:attribution.utm_source,utm_medium:attribution.utm_medium,utm_campaign:attribution.utm_campaign,landing_referrer:attribution.landing_referrer,entry_page:attribution.entry_page});
 const r=await fetch(`${BASE_URL}/CreateBooking`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload})});
 const text=await r.text();
 if(!text.trim())return msg("CreateBooking API returned an empty response.",true);
@@ -1124,6 +1145,7 @@ return a&&b&&c;
 function init(){
 setupDate();
 setupGuestInput();
+ensureMarketingConsent("createBookingBtn","marketingConsent");
 const phoneField=field("customerPhone");
 if(phoneField){
 phoneField.placeholder="0400000000";

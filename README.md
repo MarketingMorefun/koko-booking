@@ -83,6 +83,7 @@ Bound to the "Booking Master" Google Sheet.
 | File | Purpose |
 |---|---|
 | `SyncBookings.gs` | Hourly trigger: pulls every booking from `BookingSheetExport`, rewrites the "Booking Master" sheet, upserts a Google Calendar event per `deposit_paid` booking (per-venue calendar, deleted if the booking un-pays), sends the `[NEW BOOKING]` staff notification email the first time a booking's calendar event is created (tracked via its own `new_booking_email_sent` column, independent of calendar success so a failed send retries), and syncs `referral_code`/`discount_aud`/`discount_reason` into the sheet. Also exposes `backfillMissingNewBookingEmails()` — a manual, non-triggered function to catch up `[NEW BOOKING]` emails for bookings that were skipped when that column was first added. |
+| `BookingMailchimp.gs` | Separate file in the same Apps Script project. `syncConsentedBookingsToMailchimp()` (called at the end of every `syncBookingsFromXano` run, non-fatal) adds customers who ticked the booking form's marketing-consent box to Mailchimp, tagged `online booking`. Needs Script Properties `MC_API_KEY` + `MC_LIST_ID`; remembers progress in `MC_BOOKING_LAST_ID`. Never re-subscribes someone who unsubscribed (`status_if_new`). |
 | `Reminders.gs` | Separate file in the same Apps Script project. `runReminders()` POSTs to `RunReminders` with Script Property `REMINDER_SECRET`; `installReminderTrigger()` (run once by hand) sets it on a 5-minute time-driven trigger. |
 | `SyncMailchimp.gs` | Syncs a separate "Form responses" sheet into Mailchimp, splitting contacts into per-store sheets/audiences by a "store name" column. Unrelated to the booking flow above. |
 
@@ -135,7 +136,7 @@ break them. Single flow: `locationSlug`/`location`, `bookingDate`/`date`,
 `selectPackage{Joy,Fun,Max}`, `packageSection`, `addonsSection`, `contactSection`,
 `customerName`/`Phone`/`Email`, `referralCode`, `reviewSection`, `review*` fields,
 `createBookingBtn`, `confirmBookingBtn` (typo alias `confitmBookingBtn` intentionally
-also accepted). Group flow uses the `group*` equivalents, plus `groupReferralCode`.
+also accepted). Group flow uses the `group*` equivalents, plus `groupReferralCode`. The marketing-consent checkbox (`marketingConsent` / `groupMarketingConsent`) is injected by the scripts just above the Review button — no Webflow markup needed; it's sent as `marketing_consent` and stored on the booking.
 Buttons can also be targeted with `data-koko-*` attributes; a missing required section
 shows a visible message instead of failing silently.
 

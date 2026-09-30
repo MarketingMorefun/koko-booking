@@ -43,7 +43,8 @@ const HEADERS = [
   "utm_source",
   "utm_medium",
   "utm_campaign",
-  "landing_referrer"
+  "landing_referrer",
+  "marketing_consent"
 ];
 
 // Matches Xano "Locations" table (id -> name)
@@ -215,7 +216,8 @@ function syncBookingsFromXano() {
       b.utm_source || "",
       b.utm_medium || "",
       b.utm_campaign || "",
-      b.landing_referrer || ""
+      b.landing_referrer || "",
+      b.marketing_consent === true ? "yes" : ""
     ];
   });
 
@@ -227,6 +229,15 @@ function syncBookingsFromXano() {
   }
 
   syncCalendarEventsFromRows(sheet, rows, existingBookingMap);
+
+  // Push newly opted-in customers to Mailchimp (BookingMailchimp.gs). Kept
+  // separate and non-fatal so a Mailchimp hiccup never breaks the sheet or
+  // calendar sync; it resumes from where it stopped on the next run.
+  try {
+    syncConsentedBookingsToMailchimp();
+  } catch (err) {
+    Logger.log("Mailchimp booking sync failed (will retry next run): " + err);
+  }
 }
 
 function getExistingBookingMap(sheet) {

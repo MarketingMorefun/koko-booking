@@ -1029,6 +1029,7 @@ function ensureGroupContactSection(showNow){
     section.appendChild(sub);
     section.appendChild(grid);
   }
+  ensureMarketingConsent("groupReviewBtn","groupMarketingConsent");
   if(showNow) show("groupContactSection");
 }
 
@@ -1039,12 +1040,34 @@ function contactError(text){
   return false;
 }
 
+// Opt-in marketing consent checkbox, injected just above the Review button
+// on the "Your details" step (no Webflow markup needed). Unticked by
+// default — consent has to be an active choice.
+function ensureMarketingConsent(btnId,inputId){
+  if(document.getElementById(inputId))return;
+  const btn=document.getElementById(btnId);
+  if(!btn||!btn.parentNode)return;
+  const wrap=document.createElement("label");
+  wrap.className="koko-marketing-consent";
+  wrap.style.cssText="display:flex;align-items:flex-start;gap:10px;margin:4px 0 16px;font-family:'Maven Pro',Arial,sans-serif;font-size:14px;line-height:1.45;color:#7B6A58;cursor:pointer;text-align:left;";
+  const box=document.createElement("input");
+  box.type="checkbox";
+  box.id=inputId;
+  box.style.cssText="width:18px;height:18px;margin:1px 0 0;flex:0 0 auto;accent-color:#221D16;cursor:pointer;";
+  const text=document.createElement("span");
+  text.textContent="Yes, send me KOKO news, offers and party ideas by email. You can unsubscribe anytime.";
+  wrap.appendChild(box);
+  wrap.appendChild(text);
+  btn.parentNode.insertBefore(wrap,btn);
+}
+
 function validateGroupContact(){
   const name=val("groupCustomerName");
   const phone=val("groupCustomerPhone").replace(/\s+/g,"");
   const email=val("groupCustomerEmail");
   const notes=val("groupBookingNotes");
   const referralCode=val("groupReferralCode").trim();
+  const consentBox=document.getElementById("groupMarketingConsent");
   const err=$("groupContactError");
   if(err) err.textContent="";
   if(!name) return contactError("Please enter your full name.");
@@ -1057,7 +1080,8 @@ function validateGroupContact(){
     customer_phone:phone,
     customer_email:email,
     booking_notes:notes,
-    referral_code:referralCode
+    referral_code:referralCode,
+    marketing_consent:!!(consentBox&&consentBox.checked)
   });
   return true;
 }
@@ -1092,6 +1116,7 @@ async function createGroupBooking(){
       customer_email:window.groupBookingState.customer_email,
       booking_notes:window.groupBookingState.booking_notes,
       referral_code:window.groupBookingState.referral_code,
+      marketing_consent:window.groupBookingState.marketing_consent===true,
       utm_source:attribution.utm_source,
       utm_medium:attribution.utm_medium,
       utm_campaign:attribution.utm_campaign,
@@ -1248,6 +1273,7 @@ function applyParams(){
 function init(){
   setupDate();
   setupGuestStepper();
+  ensureMarketingConsent("groupReviewBtn","groupMarketingConsent");
   syncBasics();
   hide("groupSlotsSection");
   hide("groupPackagesSection");
