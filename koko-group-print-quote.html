@@ -132,7 +132,7 @@
     root.innerHTML="";
     var head=document.createElement("div");
     head.className="koko-print-head";
-    head.innerHTML='<strong>KOKO Amusement — Group Booking Quote</strong><span>Generated '+new Date().toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"})+' · Enquiries: marketing@morefun.com.au</span>';
+    head.innerHTML='<strong>KOKO Amusement — Group Booking Quote</strong><span>Generated '+new Date().toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"})+' · Enquiries: marketing@kokoamusement.com.au</span>';
     root.appendChild(head);
     if(sec){
       var clone=sec.cloneNode(true);
@@ -146,7 +146,7 @@
     }
     var note=document.createElement("p");
     note.className="koko-print-custom-note";
-    note.innerHTML="Need something custom or a personalised touch? Contact <strong>marketing@morefun.com.au</strong> and we'll help you plan it.";
+    note.innerHTML="Need something custom or a personalised touch? Contact <strong>marketing@kokoamusement.com.au</strong> and we'll help you plan it.";
     root.appendChild(note);
     /* Safari can snapshot the page for printing before it has finished
        laying out content we just inserted, producing a blank PDF.
