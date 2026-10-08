@@ -14,10 +14,6 @@ query BookingSheetExport verb=GET {
       value = null
     }
   
-    // Key = Xano workspace variable SHEET_EXPORT_KEY, which must match the
-    // Apps Script Script Property XANO_EXPORT_KEY that SyncBookings.gs sends.
-    // Never hardcode it here — this repo is public, and this endpoint
-    // returns every customer's name, email and phone.
     conditional {
       if ($input.key == null || $input.key == "" || $input.key != $env.SHEET_EXPORT_KEY) {
         var $error_message {

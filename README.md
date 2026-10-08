@@ -53,6 +53,14 @@ and `BackfillReferralCodesAndCredits` checks `$env.BACKFILL_SECRET` (left unset 
 purpose — the backfill is done, so it refuses every call). Any secret that was ever
 committed here is public forever via git history: rotate it, don't just delete it.
 
+**Syncing with Xano.** The `.txt` files are the exact XanoScript that's live. Claude can
+read and write them directly through Xano's Metadata API (token in `~/.xano_token` on
+the dev machine, never committed): `GET/PUT …/api:meta/workspace/143366/apigroup/355611/api/<id>?include_xanoscript=true`
+with `Content-Type: text/x-xanoscript`; a PUT goes live immediately. Before changing an
+endpoint, pull the live version first and patch that — someone may have edited it in
+the Xano UI since the repo was last synced. Xano reformats on save (and prefers
+`|to_lower` over `|lower`), so diff with whitespace ignored.
+
 ---
 
 ## Xano — API endpoints (queries)
