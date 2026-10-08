@@ -517,6 +517,22 @@ query CreateBooking verb=POST {
             marketing_consent         : $input.payload.marketing_consent|first_notnull:false
           }
         } as $Booking
+      
+        // Marketing consent ticked -> add them to Mailchimp (tag "online
+        // booking"). Never blocks the booking: the function only reports
+        // ok/status, and a Mailchimp hiccup doesn't change the response.
+        conditional {
+          if ($input.payload.marketing_consent) {
+            function.run mailchimp_subscribe {
+              input = {
+                email     : $input.payload.customer_email
+                first_name: $input.payload.customer_name|first_notnull:""|trim|split:" "|first
+                store     : $Locations1.Name
+                tag       : "online booking"
+              }
+            } as $MailchimpResult
+          }
+        }
       }
     }
   }

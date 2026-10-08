@@ -1,0 +1,92 @@
+function mailchimp_subscribe {
+  input {
+    text email
+    text first_name?
+    text last_name?
+    text store?
+    text tag?
+  }
+
+  stack {
+    // Adds (or updates) one contact in the KOKO Amusement Mailchimp audience.
+    // Used by CreateBooking / CreateGroupBooking (marketing-consent box) and
+    // NewsletterSignup (Webflow "Email Sub" form). API key = Xano workspace
+    // variable MC_API_KEY. status_if_new: someone who already unsubscribed
+    // keeps their status — never re-subscribed by this.
+    var $result {
+      value = {ok: false, status: 0}
+    }
+  
+    var $email_clean {
+      value = $input.email
+        |first_notnull:""
+        |trim
+        |to_lower
+    }
+  
+    conditional {
+      if ($email_clean != "" && $env.MC_API_KEY != null && $env.MC_API_KEY != "") {
+        var $dc {
+          value = $env.MC_API_KEY|split:"-"|last
+        }
+      
+        var $member_url {
+          value = "https://"
+            |concat:$dc:""
+            |concat:".api.mailchimp.com/3.0/lists/873666e056/members/":""
+            |concat:($email_clean|md5):""
+        }
+      
+        var $auth_header {
+          value = "Authorization: Basic "
+            |concat:("koko:"
+              |concat:$env.MC_API_KEY:""
+              |base64_encode
+            ):""
+        }
+      
+        api.request {
+          url = $member_url
+          method = "PUT"
+          params = ```
+            {
+              email_address: $email_clean
+              status_if_new: "subscribed"
+              merge_fields : {
+                FNAME: $input.first_name|first_notnull:""
+                LNAME: $input.last_name|first_notnull:""
+                STORE: $input.store|first_notnull:""
+              }
+            }
+            ```
+          headers = []
+            |push:$auth_header
+            |push:"Content-Type: application/json"
+        } as $Upsert
+      
+        conditional {
+          if ($Upsert.response.status == 200 && $input.tag != null && $input.tag != "") {
+            api.request {
+              url = $member_url|concat:"/tags":""
+              method = "POST"
+              params = {tags: [{name: $input.tag, status: "active"}]}
+              headers = []
+                |push:$auth_header
+                |push:"Content-Type: application/json"
+            } as $TagResult
+          }
+        }
+      
+        var $result {
+          value = {
+            ok    : $Upsert.response.status == 200
+            status: $Upsert.response.status
+            detail: $Upsert.response.result.detail|first_notnull:""
+          }
+        }
+      }
+    }
+  }
+
+  response = $result
+}

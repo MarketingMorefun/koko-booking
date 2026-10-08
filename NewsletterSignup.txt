@@ -1,0 +1,58 @@
+query NewsletterSignup verb=POST {
+  api_group = "KOKO Booking"
+
+  input {
+    text key?
+    text triggerType?
+    json payload?
+  }
+
+  stack {
+    // Webflow form_submission webhook target for the homepage "Email Sub"
+    // newsletter form -> Mailchimp (tag "website newsletter"). The webhook
+    // URL carries ?key=..., checked against Xano workspace variable
+    // WEBFLOW_HOOK_KEY so nobody else can push addresses into the audience.
+    // Always answers 200 so Webflow doesn't retry; the body says what happened.
+    var $result {
+      value = {ok: false}
+    }
+  
+    conditional {
+      if ($input.key == null || $input.key == "" || $input.key != $env.WEBFLOW_HOOK_KEY) {
+        var $result {
+          value = {ok: false, error: "Unauthorized"}
+        }
+      }
+    
+      elseif (($input.payload|get:"name":"") != "Email Sub") {
+        var $result {
+          value = {ok: true, skipped: "not the Email Sub form"}
+        }
+      }
+    
+      else {
+        var $data {
+          value = $input.payload|get:"data":{}
+        }
+      
+        function.run mailchimp_subscribe {
+          input = {
+            email     : $data|get:"Email":""
+            first_name: $data|get:"Your Name":""|trim|split:" "|first
+            tag       : "website newsletter"
+          }
+        } as $Mailchimp
+      
+        var $result {
+          value = {
+            ok    : $Mailchimp.ok
+            status: $Mailchimp.status
+            detail: $Mailchimp.detail
+          }
+        }
+      }
+    }
+  }
+
+  response = $result
+}

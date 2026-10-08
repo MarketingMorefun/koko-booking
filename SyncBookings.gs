@@ -229,15 +229,6 @@ function syncBookingsFromXano() {
   }
 
   syncCalendarEventsFromRows(sheet, rows, existingBookingMap);
-
-  // Push newly opted-in customers to Mailchimp (BookingMailchimp.gs). Kept
-  // separate and non-fatal so a Mailchimp hiccup never breaks the sheet or
-  // calendar sync; it resumes from where it stopped on the next run.
-  try {
-    syncConsentedBookingsToMailchimp();
-  } catch (err) {
-    Logger.log("Mailchimp booking sync failed (will retry next run): " + err);
-  }
 }
 
 function getExistingBookingMap(sheet) {
