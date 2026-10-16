@@ -44,7 +44,8 @@ const HEADERS = [
   "utm_medium",
   "utm_campaign",
   "landing_referrer",
-  "marketing_consent"
+  "marketing_consent",
+  "notify_snapshot"
 ];
 
 // Matches Xano "Locations" table (id -> name)
@@ -217,7 +218,8 @@ function syncBookingsFromXano() {
       b.utm_medium || "",
       b.utm_campaign || "",
       b.landing_referrer || "",
-      b.marketing_consent === true ? "yes" : ""
+      b.marketing_consent === true ? "yes" : "",
+      existingBooking.notifySnapshot || ""
     ];
   });
 
@@ -245,6 +247,7 @@ function getExistingBookingMap(sheet) {
   const calendarEventIdCol = headers.indexOf("calendar_event_id");
   const calendarSyncSignatureCol = headers.indexOf("calendar_sync_signature");
   const newBookingEmailSentCol = headers.indexOf("new_booking_email_sent");
+  const notifySnapshotCol = headers.indexOf("notify_snapshot");
   const statusCol = headers.indexOf("status");
 
   if (bookingIdCol === -1) {
@@ -263,6 +266,7 @@ function getExistingBookingMap(sheet) {
       calendarEventId: calendarEventIdCol === -1 ? "" : values[i][calendarEventIdCol],
       calendarSyncSignature: calendarSyncSignatureCol === -1 ? "" : values[i][calendarSyncSignatureCol],
       newBookingEmailSent: newBookingEmailSentCol === -1 ? "" : values[i][newBookingEmailSentCol],
+      notifySnapshot: notifySnapshotCol === -1 ? "" : values[i][notifySnapshotCol],
       status: statusCol === -1 ? "" : values[i][statusCol]
     };
   }
@@ -415,6 +419,19 @@ function syncCalendarEventsFromRows(sheet, rows, previousBookingMap) {
       sheet.getRange(i + 2, index.newBookingEmailSentCol + 1).setValue(syncResult.newBookingEmailSent);
       currentBookingMap[bookingId].newBookingEmailSent = syncResult.newBookingEmailSent;
     }
+
+    // [BOOKING CHANGED] / [BOOKING CANCELLED] store emails. Non-fatal: a
+    // failed send leaves the stored snapshot as-is so it retries next run.
+    if (index.notifySnapshotCol !== -1) {
+      try {
+        const nextSnapshot = notifyStoresOfChanges(row, index);
+        if (nextSnapshot !== row[index.notifySnapshotCol]) {
+          sheet.getRange(i + 2, index.notifySnapshotCol + 1).setValue(nextSnapshot);
+        }
+      } catch (err) {
+        Logger.log("Change/cancel notification FAILED for booking " + bookingId + ": " + err);
+      }
+    }
   }
 
   deleteRemovedBookingEvents(previousBookingMap, currentBookingMap);
@@ -451,7 +468,8 @@ function buildHeaderIndex(headers) {
     packageIdCol: headers.indexOf("package_id"),
     calendarEventIdCol: headers.indexOf("calendar_event_id"),
     calendarSyncSignatureCol: headers.indexOf("calendar_sync_signature"),
-    newBookingEmailSentCol: headers.indexOf("new_booking_email_sent")
+    newBookingEmailSentCol: headers.indexOf("new_booking_email_sent"),
+    notifySnapshotCol: headers.indexOf("notify_snapshot")
   };
 }
 
@@ -665,6 +683,142 @@ function upsertCalendarEventForRow(context) {
     calendarSyncSignature: nextSignature,
     newBookingEmailSent: newBookingEmailSent
   };
+}
+
+// ============================================================
+// Change / cancellation emails to the store.
+//
+// The [NEW BOOKING] email goes out once per booking. After that, if a
+// paid booking's date, time, venue, room, guests, package or add-ons are
+// edited, the store gets a [BOOKING CHANGED] email listing old → new (a
+// move to another venue emails BOTH stores). If a paid booking is
+// cancelled/expired/refunded, the store gets a [BOOKING CANCELLED] email.
+// Small edits (notes, customer phone) don't email anyone.
+//
+// The last-notified state lives in the notify_snapshot column. A paid
+// booking with no snapshot yet (every existing booking the first time
+// this runs, and each brand-new booking) is just recorded silently — the
+// [NEW BOOKING] email already covers new ones — so deploying this never
+// sends a backlog.
+// ============================================================
+
+const NOTIFY_FIELDS = [
+  ["location", "Location", "locationNameCol"],
+  ["room", "Party Room", "partyRoomCol"],
+  ["date", "Date", "dateCol"],
+  ["start", "Start", "startTimeCol"],
+  ["end", "End", "endTimeCol"],
+  ["guests", "Guests", "guestsCol"],
+  ["package", "Package", "packageNameCol"],
+  ["addons", "Add-ons", "addonsCol"]
+];
+
+const CANCELLED_STATUSES = ["cancelled", "canceled", "expired", "refunded"];
+
+function buildNotifySnapshot(row, index) {
+  const snap = {};
+  NOTIFY_FIELDS.forEach(function (f) {
+    snap[f[0]] = safeText(row[index[f[2]]]);
+  });
+  return snap;
+}
+
+function parseNotifySnapshot(text) {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    return null;
+  }
+}
+
+// Returns the notify_snapshot value to store for this row.
+function notifyStoresOfChanges(row, index) {
+  const stored = safeText(row[index.notifySnapshotCol]);
+  const previous = parseNotifySnapshot(stored);
+  const status = safeText(row[index.statusCol]);
+  const bookingId = safeText(row[index.bookingIdCol]);
+
+  if (status === "deposit paid") {
+    const current = buildNotifySnapshot(row, index);
+    const currentText = JSON.stringify(current);
+
+    if (!previous) return currentText; // first sighting: record, no email
+    if (stored === currentText) return stored;
+
+    const changes = NOTIFY_FIELDS
+      .filter(function (f) { return safeText(previous[f[0]]) !== current[f[0]]; })
+      .map(function (f) { return f[1] + ": " + (safeText(previous[f[0]]) || "-") + " → " + (current[f[0]] || "-"); });
+
+    const stores = [current.location];
+    if (previous.location && previous.location !== current.location) stores.push(previous.location);
+
+    const subject = "[BOOKING CHANGED] #" + bookingId + " - " + current.location + " - " + current.date + " " + current.start;
+    const body = [
+      "A paid booking has been changed:",
+      "",
+      changes.join("\n"),
+      "",
+      "",
+      "Current details:",
+      ""
+    ].concat(bookingDetailLines(row, index, current)).join("\n");
+
+    const allSent = stores.every(function (store) {
+      return sendStoreEmail(store, subject, body);
+    });
+
+    return allSent ? currentText : stored;
+  }
+
+  if (previous && CANCELLED_STATUSES.indexOf(status.toLowerCase()) !== -1) {
+    const subject = "[BOOKING CANCELLED] #" + bookingId + " - " + safeText(previous.location) + " - " + safeText(previous.date) + " " + safeText(previous.start);
+    const body = [
+      "A paid booking has been cancelled (status: " + status + "). Please free up this slot:",
+      "",
+      ""
+    ].concat(bookingDetailLines(row, index, previous)).join("\n");
+
+    return sendStoreEmail(previous.location, subject, body) ? "" : stored;
+  }
+
+  return stored;
+}
+
+function bookingDetailLines(row, index, snap) {
+  return [
+    "Booking No: " + safeText(row[index.bookingIdCol]),
+    "Location: " + safeText(snap.location),
+    "Party Room: " + safeText(snap.room),
+    "Date: " + safeText(snap.date),
+    "Time: " + safeText(snap.start) + " - " + safeText(snap.end),
+    "Guests: " + safeText(snap.guests),
+    "Package: " + safeText(snap.package),
+    "Add-ons: " + safeText(snap.addons),
+    "",
+    "Customer: " + safeText(row[index.customerNameCol]),
+    "Phone: " + safeText(row[index.customerPhoneCol]),
+    "Email: " + safeText(row[index.customerEmailCol]),
+    "Notes: " + safeText(row[index.notesCol])
+  ];
+}
+
+function sendStoreEmail(locationName, subject, body) {
+  const to = STORE_CALENDAR_ID_MAP[locationName];
+
+  if (!to) {
+    Logger.log("No store email configured for location: " + locationName + " — skipped \"" + subject + "\"");
+    return true; // nothing we can send; don't retry forever
+  }
+
+  try {
+    MailApp.sendEmail({ to: to, subject: subject, body: body, name: "KOKO Booking Bot" });
+    Logger.log("Sent \"" + subject + "\" to " + to);
+    return true;
+  } catch (err) {
+    Logger.log("Failed to send \"" + subject + "\" to " + to + ": " + err);
+    return false;
+  }
 }
 
 function buildNewBookingEmailSubject(info) {
