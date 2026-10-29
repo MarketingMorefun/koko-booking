@@ -488,10 +488,10 @@ function upsertCalendarEventForRow(context) {
     previousBooking.newBookingEmailSent || "";
   const previousLocationName = previousBooking.locationName || "";
 
-  if (status !== "deposit paid") {
+  if (!isActiveBookingStatus(status)) {
     if (existingEventId) {
       deleteCalendarEventByLocation(previousLocationName || locationName, existingEventId);
-      Logger.log("Deleted event because booking is no longer deposit paid: " + bookingId);
+      Logger.log("Deleted event because booking is no longer active (deposit paid / confirmed): " + bookingId);
     }
 
     return {
@@ -545,6 +545,7 @@ function upsertCalendarEventForRow(context) {
   const newBookingEmailSent = ensureNewBookingEmailSent(existingEmailSent, {
     calendarId: calendarId,
     bookingId: bookingId,
+    status: status,
     locationName: locationName,
     partyRoom: row[index.partyRoomCol],
     bookingDate: bookingDate,
@@ -739,7 +740,7 @@ function notifyStoresOfChanges(row, index) {
   const status = safeText(row[index.statusCol]);
   const bookingId = safeText(row[index.bookingIdCol]);
 
-  if (status === "deposit paid") {
+  if (isActiveBookingStatus(status)) {
     const current = buildNotifySnapshot(row, index);
     const currentText = JSON.stringify(current);
 
@@ -829,11 +830,13 @@ function buildNewBookingEmailSubject(info) {
 
 function buildNewBookingEmailBody(info) {
   return [
-    "A new booking has been received (deposit paid):",
+    info.status === "confirmed"
+      ? "A new booking has been confirmed (paid by invoice — not paid online yet):"
+      : "A new booking has been received (deposit paid):",
     "",
     "",
     "Booking No: " + safeText(info.bookingId),
-    "Status: deposit paid",
+    "Status: " + (safeText(info.status) || "deposit paid"),
     "Location: " + safeText(info.locationName),
     "Party Room: " + safeText(info.partyRoom),
     "Date: " + safeText(info.bookingDate),
@@ -987,7 +990,9 @@ function buildCalendarSyncSignature(info) {
 }
 
 function buildCalendarTitle(info) {
-  const paidPrefix = info.status === "deposit paid" ? "💰[PAID] " : "";
+  const paidPrefix = info.status === "deposit paid"
+    ? "💰[PAID] "
+    : info.status === "confirmed" ? "🧾[INVOICE] " : "";
 
   const guestPart = info.guestCount
     ? info.guestCount + " guests"
@@ -1012,8 +1017,7 @@ function buildCalendarTitle(info) {
     safeText(info.bookingId) +
     " - " +
     safeText(info.customerName) +
-    " - " +
-    safeText(info.partyRoom) +
+    (info.partyRoom ? " - " + safeText(info.partyRoom) : "") +
     (details ? " - " + details : "");
 }
 
@@ -1141,6 +1145,13 @@ function getBalanceDueAud(booking, grandTotalAud, depositPaidAud) {
   }
 
   return Math.max(grandTotalAud - depositPaidAud, 0);
+}
+
+// Bookings that hold a real slot and belong in the store calendar:
+// paid online ("deposit paid") or entered manually as "confirmed" — e.g.
+// school groups paying by invoice, which never go through Stripe.
+function isActiveBookingStatus(status) {
+  return status === "deposit paid" || status === "confirmed";
 }
 
 function normaliseStatus(status) {
