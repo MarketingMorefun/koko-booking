@@ -80,7 +80,7 @@
       if(node.children&&node.children.length)continue;
       var t=(node.textContent||"").trim();
       var tl=t.toLowerCase();
-      if(/^step\s*\d+$/i.test(t)||tl==="deposit due"||tl.indexOf("almost done")!==-1||tl==="review your booking"){
+      if(/^step\s*\d+$/i.test(t)||tl==="deposit due"||tl==="payment due"||tl.indexOf("almost done")!==-1||tl==="review your booking"){
         toRemove.push(node);
       }
     }
@@ -117,7 +117,7 @@
       insertIncludes(clone);
       stripIds(clone);
       clone.removeAttribute("style");
-      var junk=clone.querySelectorAll(".koko-print-quote-wrap");
+      var junk=clone.querySelectorAll(".koko-print-quote-wrap,#kokoGroupPayOptions");
       for(var i=0;i<junk.length;i++)junk[i].parentNode.removeChild(junk[i]);
       root.appendChild(clone);
     }
