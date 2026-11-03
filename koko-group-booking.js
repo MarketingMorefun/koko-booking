@@ -1162,7 +1162,7 @@ function renderGroupReview(){
   const packageTotalCents=b.package_total_cents!=null?b.package_total_cents:q.package_total_cents;
   const addonsTotalCents=b.addons_total_cents!=null?b.addons_total_cents:q.addons_total_cents;
   const grandTotalCents=b.grand_total_cents!=null?b.grand_total_cents:q.grand_total_cents;
-  reviewText("groupReviewLocation",window.groupBookingState.location_slug);
+  reviewText("groupReviewLocation",LOCATION_NAMES[window.groupBookingState.location_slug]||window.groupBookingState.location_slug);
   reviewText("groupReviewDate",window.groupBookingState.date);
   reviewText("groupReviewGuests",window.groupBookingState.guests);
   reviewText("groupReviewTime",window.groupBookingState.selected_slot_label);
