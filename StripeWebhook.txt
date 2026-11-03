@@ -191,6 +191,21 @@ query StripeWebhook verb=POST {
               }
             
               elseif ($event_type == "checkout.session.completed" || $event_type == "checkout.session.async_payment_succeeded") {
+                // "full" = group booking paid in full at checkout (set by
+                // ConfirmGroupBooking). Record the whole amount as paid so the
+                // balance comes out at 0; everything else stays a $50 deposit.
+                var $payment_type {
+                  value = $session|get:"metadata"|get:"payment_type"
+                }
+              
+                conditional {
+                  if ($payment_type == "full") {
+                    var $deposit_paid_cents {
+                      value = $session|get:"metadata"|get:"deposit_cents"|to_int
+                    }
+                  }
+                }
+              
                 var $remaining_balance_cents {
                   value = $Booking.grand_total_cents - $deposit_paid_cents - ($Booking.discount_cents|first_notnull:0)
                 }
@@ -551,6 +566,23 @@ query StripeWebhook verb=POST {
                 var $email_html {
                   value = $email_html
                     |replace:"{{CUSTOMER_PHONE}}":$Booking.customer_phone
+                }
+              
+                // Paid in full: the template is written for a $50 deposit, so
+                // swap the deposit wording for "paid in full".
+                conditional {
+                  if ($payment_type == "full") {
+                    var $email_html {
+                      value = $email_html
+                        |replace:", your $50 deposit has been received. Your booking is confirmed. The remaining balance is payable on the day of your event.":", your full payment has been received. Your booking is confirmed and there is nothing left to pay on the day."
+                        |replace:">Deposit Paid<":">Paid in Full<"
+                        |replace:"The $50 deposit is non-refundable. The remaining balance is payable on the day of your event.":"Your booking is paid in full, so there is nothing left to pay on the day."
+                    }
+                  
+                    var $email_subject {
+                      value = $email_subject|replace:"KOKO Booking Deposit Confirmation":"KOKO Booking Confirmation"
+                    }
+                  }
                 }
               
                 conditional {

@@ -5,6 +5,10 @@ query ConfirmGroupBooking verb=POST {
     object payload {
       schema {
         int booking_id
+
+        // "deposit" (default) = $50 now, rest on the day.
+        // "full" = whole booking (after any discount) now.
+        text payment_option?
       }
     }
   }
@@ -67,6 +71,14 @@ query ConfirmGroupBooking verb=POST {
       value = 0
     }
   
+    var $payment_type {
+      value = "deposit"
+    }
+  
+    var $line_item_name {
+      value = "KOKO Group Booking Deposit"
+    }
+  
     var $now_ts {
       value = `"now"|to_timestamp:"Australia/Sydney"`
     }
@@ -116,6 +128,29 @@ query ConfirmGroupBooking verb=POST {
           if ($remaining_balance_cents < 0) {
             var $remaining_balance_cents {
               value = 0
+            }
+          }
+        }
+      
+        // Pay in full: charge the whole booking (after any referral /
+        // repeat-customer discount) instead of the $50 deposit. Only when
+        // that's actually more than the deposit.
+        conditional {
+          if ($input.payload.payment_option == "full" && ($Booking.grand_total_cents - ($Booking.discount_cents|first_notnull:0)) > $deposit_cents) {
+            var $deposit_cents {
+              value = $Booking.grand_total_cents - ($Booking.discount_cents|first_notnull:0)
+            }
+          
+            var $remaining_balance_cents {
+              value = 0
+            }
+          
+            var $payment_type {
+              value = "full"
+            }
+          
+            var $line_item_name {
+              value = "KOKO Group Booking - Full Payment"
             }
           }
         }
@@ -207,7 +242,7 @@ query ConfirmGroupBooking verb=POST {
                         |set:"line_items[0][quantity]":1
                         |set:"line_items[0][price_data][currency]":"aud"
                         |set:"line_items[0][price_data][unit_amount]":$deposit_cents
-                        |set:"line_items[0][price_data][product_data][name]":"KOKO Group Booking Deposit"
+                        |set:"line_items[0][price_data][product_data][name]":$line_item_name
                         |set:"line_items[1][quantity]":1
                         |set:"line_items[1][price_data][currency]":"aud"
                         |set:"line_items[1][price_data][unit_amount]":$surcharge_cents
@@ -216,7 +251,7 @@ query ConfirmGroupBooking verb=POST {
                         |set:"metadata[booking_type]":"group_booking"
                         |set:"metadata[location_id]":$Booking.location_id
                         |set:"metadata[package_id]":$Booking.package_id
-                        |set:"metadata[payment_type]":"deposit"
+                        |set:"metadata[payment_type]":$payment_type
                         |set:"metadata[stripe_mode]":$stripe_mode
                         |set:"metadata[deposit_cents]":$deposit_cents
                         |set:"metadata[surcharge_cents]":$surcharge_cents

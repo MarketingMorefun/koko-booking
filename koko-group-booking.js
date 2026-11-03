@@ -1177,7 +1177,93 @@ function renderGroupReview(){
   reviewText("groupReviewBookingId",bookingId(b) || "-");
   injectDiscountBanner(b);
   const cBtn=$("groupConfirmBtn");
-  if(cBtn){injectSurchargeBreakdown(cBtn);cBtn.textContent="Pay "+money(PAYABLE_NOW_CENTS);}
+  if(cBtn){injectPaymentOptions(cBtn);injectSurchargeBreakdown(cBtn);}
+  updateGroupPaymentDisplay();
+}
+
+// ---- Pay $50 deposit (default) or pay the whole booking now ----
+// Both add the same $1.50 booking fee. ConfirmGroupBooking charges
+// whichever option is sent as payment_option; StripeWebhook records a full
+// payment with nothing left to pay on the day.
+function groupNetTotalCents(){
+  const b=window.groupBookingState.booking || {};
+  const q=window.groupBookingState.quote || {};
+  const grand=Number(b.grand_total_cents!=null?b.grand_total_cents:(q.grand_total_cents||0));
+  return Math.max(grand-Number(b.discount_cents||0),0);
+}
+function groupPayFull(){
+  return window.groupBookingState.payment_option==="full" && groupNetTotalCents()>DEPOSIT_CENTS;
+}
+function groupDueNowCents(){
+  return groupPayFull()?groupNetTotalCents():DEPOSIT_CENTS;
+}
+function groupPayableNowCents(){
+  return groupDueNowCents()+SURCHARGE_CENTS;
+}
+// The "Deposit due today" / "$50.00" pair is static Webflow text; find it
+// once by its original wording and keep a handle so it can be rewritten.
+function groupReviewLeaf(role,originalText){
+  const sec=$("groupReviewSection");
+  if(!sec) return null;
+  let el=sec.querySelector('[data-koko-role="'+role+'"]');
+  if(el) return el;
+  el=Array.from(sec.querySelectorAll("*")).find(function(n){return !n.children.length && (n.textContent||"").trim()===originalText;});
+  if(el) el.setAttribute("data-koko-role",role);
+  return el || null;
+}
+function updateGroupPaymentDisplay(){
+  const full=groupPayFull();
+  const dueLabel=groupReviewLeaf("dueLabel","Deposit due today");
+  const dueValue=groupReviewLeaf("dueValue","$50.00");
+  if(dueLabel) dueLabel.textContent=full?"Full payment due today":"Deposit due today";
+  if(dueValue) dueValue.textContent=money(groupDueNowCents());
+  reviewText("groupReviewRemainingBalance",money(full?0:Math.max(groupNetTotalCents()-DEPOSIT_CENTS,0)));
+  const box=document.getElementById("kokoGroupSurchargeBreakdown");
+  if(box){
+    const row=function(label,value,bold){return "<div style=\"display:flex;justify-content:space-between;align-items:center;"+(bold?"font-weight:900;margin-top:8px;padding-top:8px;border-top:1px solid #E8DDCC;":"font-weight:600;color:#7B6A58;margin-bottom:6px;")+"\"><span>"+label+"</span><span>"+value+"</span></div>";};
+    box.innerHTML=row(full?"Full payment":"Deposit",money(groupDueNowCents()))+row("Booking fee",money(SURCHARGE_CENTS))+row("Total payable now",money(groupPayableNowCents()),true);
+  }
+  const btn=$("groupConfirmBtn");
+  if(btn) btn.textContent="Pay "+money(groupPayableNowCents());
+  const opts=document.getElementById("kokoGroupPayOptions");
+  if(opts){
+    opts.querySelectorAll("label").forEach(function(l){
+      const on=l.querySelector("input").checked;
+      l.style.borderColor=on?"#221D16":"#E8DDCC";
+      l.style.background=on?"#FFF7D6":"#FFFBF5";
+    });
+  }
+}
+function injectPaymentOptions(btn){
+  if(!btn||!btn.parentNode)return;
+  const old=document.getElementById("kokoGroupPayOptions");
+  if(old)old.remove();
+  const net=groupNetTotalCents();
+  if(net<=DEPOSIT_CENTS){window.groupBookingState.payment_option="deposit";return;}
+  if(window.groupBookingState.payment_option!=="full") window.groupBookingState.payment_option="deposit";
+  const wrap=document.createElement("div");
+  wrap.id="kokoGroupPayOptions";
+  wrap.style.cssText="display:grid;gap:10px;margin:0 0 14px;font-family:'Maven Pro',Arial,sans-serif;text-align:left;";
+  [
+    ["deposit","Pay "+money(DEPOSIT_CENTS)+" deposit now","Remaining "+money(Math.max(net-DEPOSIT_CENTS,0))+" payable on the day"],
+    ["full","Pay in full now",money(net)+" today — nothing left to pay on the day"]
+  ].forEach(function(o){
+    const label=document.createElement("label");
+    label.style.cssText="display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:2px solid #E8DDCC;border-radius:14px;cursor:pointer;background:#FFFBF5;";
+    const radio=document.createElement("input");
+    radio.type="radio";
+    radio.name="kokoGroupPayOption";
+    radio.value=o[0];
+    radio.checked=window.groupBookingState.payment_option===o[0];
+    radio.style.cssText="margin:3px 0 0;accent-color:#221D16;flex:0 0 auto;";
+    radio.addEventListener("change",function(){window.groupBookingState.payment_option=o[0];updateGroupPaymentDisplay();});
+    const text=document.createElement("span");
+    text.innerHTML="<span style=\"display:block;font-weight:800;color:#2F241C;font-size:15px;\">"+o[1]+"</span><span style=\"display:block;color:#7B6A58;font-size:13px;margin-top:2px;\">"+o[2]+"</span>";
+    label.appendChild(radio);
+    label.appendChild(text);
+    wrap.appendChild(label);
+  });
+  btn.parentNode.insertBefore(wrap,btn);
 }
 function injectDiscountBanner(b){
   const old=document.getElementById("kokoGroupDiscountBanner");
@@ -1213,6 +1299,7 @@ function injectSurchargeBreakdown(btn){
   const row=function(label,value,bold){return "<div style=\"display:flex;justify-content:space-between;align-items:center;"+(bold?"font-weight:900;margin-top:8px;padding-top:8px;border-top:1px solid #E8DDCC;":"font-weight:600;color:#7B6A58;margin-bottom:6px;")+"\"><span>"+label+"</span><span>"+value+"</span></div>";};
   box.innerHTML=row("Deposit",money(DEPOSIT_CENTS))+row("Booking fee",money(SURCHARGE_CENTS))+row("Total payable now",money(PAYABLE_NOW_CENTS),true);
   btn.parentNode.insertBefore(box,btn);
+  updateGroupPaymentDisplay();
 }
 
 async function confirmGroupBooking(){
@@ -1221,9 +1308,9 @@ async function confirmGroupBooking(){
   if(!id){return msg("Please create a booking first.",true);}
   const btn=$("groupConfirmBtn");
   if(btn){btn.style.pointerEvents="none";btn.style.opacity=".75";btn.textContent="Redirecting to payment...";}
-  msg("Preparing deposit payment...");
+  msg(groupPayFull()?"Preparing full payment...":"Preparing deposit payment...");
   try{
-    const payload={booking_id:id,booking:booking};
+    const payload={booking_id:id,booking:booking,payment_option:groupPayFull()?"full":"deposit"};
     const r=await fetch(BASE_URL + "/ConfirmGroupBooking",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -1244,7 +1331,7 @@ async function confirmGroupBooking(){
     console.error("Confirm group booking failed:",e);
     msg(e.message || "Failed to prepare payment.",true);
   }finally{
-    if(btn){btn.style.pointerEvents="auto";btn.style.opacity="1";btn.textContent="Pay "+money(PAYABLE_NOW_CENTS);}
+    if(btn){btn.style.pointerEvents="auto";btn.style.opacity="1";btn.textContent="Pay "+money(groupPayableNowCents());}
   }
 }
 

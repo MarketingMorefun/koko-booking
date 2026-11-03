@@ -479,6 +479,23 @@ query ResendConfirmationEmail verb=POST {
             |replace:"{{CUSTOMER_PHONE}}":$Booking.customer_phone
         }
       
+        // Booking paid in full at checkout (group "Pay in full"): nothing
+        // owing and more than the $50 deposit paid — swap the deposit wording.
+        conditional {
+          if ($Booking.balance_due_cents == 0 && ($Booking.deposit_paid_cents|first_notnull:0) > 5000) {
+            var $email_html {
+              value = $email_html
+                |replace:", your $50 deposit has been received. Your booking is confirmed. The remaining balance is payable on the day of your event.":", your full payment has been received. Your booking is confirmed and there is nothing left to pay on the day."
+                |replace:">Deposit Paid<":">Paid in Full<"
+                |replace:"The $50 deposit is non-refundable. The remaining balance is payable on the day of your event.":"Your booking is paid in full, so there is nothing left to pay on the day."
+            }
+          
+            var $email_subject {
+              value = $email_subject|replace:"KOKO Booking Deposit Confirmation":"KOKO Booking Confirmation"
+            }
+          }
+        }
+      
         api.request {
           url = "https://api.resend.com/emails"
           method = "POST"
@@ -510,7 +527,7 @@ query ResendConfirmationEmail verb=POST {
   response = {
     error_message: $error_message
     message      : $message
-    booking_id   : $Booking.id
+    booking_id   : $input.payload.booking_id
     resend_email : $ResendEmail
   }
 }
