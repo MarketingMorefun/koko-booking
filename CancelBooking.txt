@@ -1,0 +1,70 @@
+query CancelBooking verb=POST {
+  api_group = "KOKO Booking"
+
+  input {
+    object payload {
+      schema {
+        int booking_id
+      }
+    }
+  }
+
+  stack {
+    var $error_message {
+      value = null
+    }
+  
+    var $Booking {
+      value = null
+    }
+  
+    var $now_ts {
+      value = `"now"|to_timestamp:"Australia/Sydney"`
+    }
+  
+    var $min_cancel_start_ts {
+      value = `$now_ts|add_ms_to_timestamp:43200000`
+    }
+  
+    db.get bookings {
+      field_name = "id"
+      field_value = $input.payload.booking_id
+    } as $Booking
+  
+    conditional {
+      if ($Booking == null) {
+        var $error_message {
+          value = "Booking not found"
+        }
+      }
+    
+      elseif ($Booking.status == "cancelled") {
+        var $error_message {
+          value = "Booking is already cancelled"
+        }
+      }
+    
+      elseif ($Booking.status == "expired") {
+        var $error_message {
+          value = "This booking has already expired"
+        }
+      }
+    
+      elseif ($Booking.start_ts <= $min_cancel_start_ts) {
+        var $error_message {
+          value = "Bookings can only be cancelled at least 12 hours before the scheduled start time."
+        }
+      }
+    
+      else {
+        db.patch bookings {
+          field_name = "id"
+          field_value = $Booking.id
+          data = {status: "cancelled", hold_expires_at_ts: null}
+        } as $Booking
+      }
+    }
+  }
+
+  response = {error_message: $error_message, booking: $Booking}
+}

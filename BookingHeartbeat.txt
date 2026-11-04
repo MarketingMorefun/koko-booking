@@ -1,0 +1,51 @@
+// Called by koko-booking-presence.js while a customer has the booking page
+// open (every 60s while the tab is visible) and once more when they leave it
+// (tab closed, switched away, or redirected to Stripe). RunReminders only
+// emails a hold once last_active_at is 15+ min old, so reminders go out after
+// the customer has actually left, not while they're still filling things in.
+// Needs the booking's email as well as its ID, so nobody can push back
+// someone else's reminders by guessing IDs. Accepts a form-encoded body
+// (navigator.sendBeacon) as well as JSON.
+query BookingHeartbeat verb=POST {
+  api_group = "KOKO Booking"
+
+  input {
+    int booking_id
+    text email filters=trim
+  }
+
+  stack {
+    var $ok {
+      value = false
+    }
+  
+    conditional {
+      if ($input.booking_id != null && $input.booking_id > 0 && $input.email != null && $input.email != "") {
+        db.get bookings {
+          field_name = "id"
+          field_value = $input.booking_id
+        } as $Booking
+      
+        conditional {
+          if ($Booking != null && ($Booking.status == "hold" || $Booking.status == "pending_payment") && ($Booking.customer_email|trim|to_lower) == ($input.email|to_lower)) {
+            var $now_ts {
+              value = `"now"|to_timestamp:"Australia/Sydney"`
+            }
+          
+            db.patch bookings {
+              field_name = "id"
+              field_value = $Booking.id
+              data = {last_active_at: $now_ts}
+            } as $Updated
+          
+            var $ok {
+              value = true
+            }
+          }
+        }
+      }
+    }
+  }
+
+  response = {ok: $ok}
+}

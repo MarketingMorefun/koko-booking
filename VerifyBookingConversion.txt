@@ -1,0 +1,115 @@
+// Read-only booking conversion verification. A caller must possess BOTH the
+// booking ID and the matching, unguessable Stripe Checkout session identifier.
+// No customer/contact details are returned; no order or payment is changed.
+query VerifyBookingConversion verb=POST {
+  api_group = "KOKO Booking"
+
+  input {
+    int booking_id
+    text session_id filters=trim
+  }
+
+  stack {
+    var $verified_paid {
+      value = false
+    }
+  
+    var $transaction_id {
+      value = null
+    }
+  
+    var $location_slug {
+      value = null
+    }
+  
+    var $deposit_value {
+      value = 0
+    }
+  
+    conditional {
+      if ($input.booking_id > 0 && $input.session_id != null && $input.session_id != "") {
+        db.query bookings {
+          where = $db.bookings.id == $input.booking_id && $db.bookings.stripe_session_id == $input.session_id
+          return = {type: "single"}
+        } as $Booking
+      
+        conditional {
+          if ($Booking != null) {
+            db.get stripe_location_keys {
+              field_name = "location_id"
+              field_value = $Booking.location_id
+            } as $StripeKey
+          
+            conditional {
+              if ($StripeKey != null && $StripeKey.is_active && $StripeKey.stripe_secret_key_live != null && $StripeKey.stripe_secret_key_live != "") {
+                api.request {
+                  url = "https://api.stripe.com/v1/checkout/sessions/"
+                    |concat:$Booking.stripe_session_id:""
+                  method = "GET"
+                  headers = []
+                    |push:("Authorization: Bearer "
+                      |concat:$StripeKey.stripe_secret_key_live:""
+                    )
+                    |push:"Stripe-Version: 2026-04-22.dahlia"
+                } as $StripeResponse
+              
+                var $Session {
+                  value = $StripeResponse|get:"response"|get:"result"
+                }
+              
+                conditional {
+                  if ($Session == null) {
+                    var $Session {
+                      value = $StripeResponse|get:"result"
+                    }
+                  }
+                }
+              
+                conditional {
+                  if ($Session != null && $Session.id == $Booking.stripe_session_id && $Session.livemode && $Session.status == "complete" && $Session.payment_status == "paid" && $Session.currency == "aud" && ($Session.metadata.booking_id|to_text) == ($Booking.id|to_text) && $Session.metadata.payment_type == "deposit") {
+                    var $deposit_cents {
+                      value = $Session.metadata.deposit_cents|to_int
+                    }
+                  
+                    conditional {
+                      if ($deposit_cents > 0 && $deposit_cents <= $Session.amount_total) {
+                        db.get Locations {
+                          field_name = "id"
+                          field_value = $Booking.location_id
+                        } as $Location
+                      
+                        var $verified_paid {
+                          value = true
+                        }
+                      
+                        var $transaction_id {
+                          value = "koko_booking_"|concat:($Booking.id|to_text):""
+                        }
+                      
+                        var $location_slug {
+                          value = $Location.slug
+                        }
+                      
+                        var $deposit_value {
+                          value = $deposit_cents / 100
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  response = {
+    verified_paid : $verified_paid
+    transaction_id: $transaction_id
+    location_slug : $location_slug
+    deposit_value : $deposit_value
+    currency      : "AUD"
+  }
+}

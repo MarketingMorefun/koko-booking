@@ -25,6 +25,11 @@ query RunReminders verb=POST {
       value = 0
     }
   
+    // Holds skipped because the same customer made a newer booking
+    var $skipped_count {
+      value = 0
+    }
+  
     var $now_ts {
       value = `"now"|to_timestamp:"Australia/Sydney"`
     }
@@ -53,195 +58,251 @@ query RunReminders verb=POST {
       }
     
       else {
+        // Every booking made in the last 24h (any status). Used to spot a
+        // customer who has since made a newer booking with the same email
+        // (compared in memory: where= can't |to_lower a db column).
+        db.query bookings {
+          where = $db.bookings.created_at > $twentyfour_hours_ago
+          return = {type: "list"}
+        } as $RecentBookings
+      
         // ============================================================
-        // REMINDER 1 — sent 15 min to 24h after the hold was created
+        // REMINDER 1 — sent 15 min to 24h after the hold was created,
+        // and only once the customer has been away from the booking page
+        // for 15 min (last_active_at, set by BookingHeartbeat; null = the
+        // page never pinged, e.g. older script — fall back to created_at)
         // (15 min = when the exclusive room/slot hold lapses, see
         // hold_expires_at_ts in CreateBooking; the cron runs every 5 min,
         // so in practice this lands ~15–20 min after they stopped)
         // ============================================================
         db.query bookings {
-          where = ($db.bookings.status == "hold" || $db.bookings.status == "pending_payment") && $db.bookings.reminder_1_sent == false && $db.bookings.customer_email != "" && $db.bookings.created_at < $fifteen_min_ago && $db.bookings.created_at > $twentyfour_hours_ago
+          where = ($db.bookings.status == "hold" || $db.bookings.status == "pending_payment") && $db.bookings.reminder_1_sent == false && $db.bookings.customer_email != "" && $db.bookings.created_at < $fifteen_min_ago && $db.bookings.created_at > $twentyfour_hours_ago && ($db.bookings.last_active_at == null || $db.bookings.last_active_at < $fifteen_min_ago)
           return = {type: "list"}
         } as $Reminder1Bookings
       
         foreach ($Reminder1Bookings) {
           each as $booking {
-            var $Location1 {
+            // Skip (and never retry) a hold when the same email has made a
+            // NEWER booking since — they re-did the booking (e.g. clicked
+            // Review again, which always creates a fresh hold) or already
+            // paid for another one. Reminding them about the old hold is
+            // confusing and can make them pay twice.
+            var $newer_booking_id_1 {
               value = null
             }
           
-            var $Package1 {
-              value = null
-            }
-          
-            conditional {
-              if ($booking.location_id != null && $booking.location_id != "") {
-                db.get Locations {
-                  field_name = "id"
-                  field_value = $booking.location_id
-                } as $Location1
+            foreach ($RecentBookings) {
+              each as $other1 {
+                conditional {
+                  if ($other1.id != $booking.id && $other1.created_at > $booking.created_at && ($other1.customer_email|trim|to_lower) == ($booking.customer_email|trim|to_lower)) {
+                    var $newer_booking_id_1 {
+                      value = $other1.id
+                    }
+                  }
+                }
               }
             }
           
             conditional {
-              if ($booking.package_id != null && $booking.package_id != "") {
-                db.get Packages {
-                  field_name = "id"
-                  field_value = $booking.package_id
-                } as $Package1
-              }
-            }
-          
-            var $location_display_1 {
-              value = ($Location1 != null ? $Location1.Name : "KOKO Amusement")|first_notempty:"KOKO Amusement"
-            }
-          
-            var $package_display_1 {
-              value = ($Package1 != null ? $Package1.Name : "")|first_notempty:"Your package"
-            }
-          
-            var $booking_start_display_1 {
-              value = $booking.start_ts
-                |to_timestamp:"Australia/Sydney"
-                |format_timestamp:"D, M j, H:i":"Australia/Sydney"
-            }
-          
-            var $booking_end_display_1 {
-              value = $booking.end_ts
-                |to_timestamp:"Australia/Sydney"
-                |format_timestamp:"H:i":"Australia/Sydney"
-            }
-          
-            var $booking_time_display_1 {
-              value = $booking_start_display_1|concat:" - ":""
-            }
-          
-            var $booking_time_display_1 {
-              value = $booking_time_display_1|concat:$booking_end_display_1:""
-            }
-          
-            var $hold_until_ts_1 {
-              value = $booking.created_at + 86400000
-            }
-          
-            var $hold_until_display_1 {
-              value = $hold_until_ts_1
-                |to_timestamp:"Australia/Sydney"
-                |format_timestamp:"D j M, g:ia":"Australia/Sydney"
-            }
-          
-            var $grand_total_display_1 {
-              value = "$"
-                |concat:((($booking.grand_total_cents|first_notempty:0) / 100)|round:2):""
-            }
-          
-            var $booking_type_param_1 {
-              value = ($booking.booking_type == "birthday_party") ? "party" : "group"
-            }
-          
-            var $resume_url_1 {
-              value = "https://booking.morefun.com.au/booking/resume?booking_id="|concat:$booking.id:""
-            }
-          
-            var $resume_url_1 {
-              value = $resume_url_1|concat:"&type=":""
-            }
-          
-            var $resume_url_1 {
-              value = $resume_url_1|concat:$booking_type_param_1:""
-            }
-          
-            var $email_subject_1 {
-              value = "Your KOKO booking isn't confirmed yet (#"|concat:$booking.id:""
-            }
-          
-            var $email_subject_1 {
-              value = $email_subject_1|concat:")":""
-            }
-          
-            var $email_html_1 {
-              value = "<div style='max-width:640px;margin:0 auto;padding:28px 20px;background:#FFFDF9;font-family:Arial,sans-serif;color:#2F241C;'><div style='background:#ffffff;border:1px solid #E8DDCC;border-radius:24px;padding:34px 28px;'><div style='display:inline-block;padding:8px 16px;border-radius:999px;background:#F5D949;border:2px solid #221D16;color:#221D16;font-size:11px;font-weight:900;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:18px;'>Not Confirmed Yet</div><h1 style='margin:0 0 12px;font-size:26px;line-height:1.2;color:#2F241C;'>Hi {{CUSTOMER_NAME}}, your KOKO time slot isn&rsquo;t locked in yet</h1><p style='margin:0 0 22px;color:#7b6a58;font-size:15px;line-height:1.6;'>You started a booking but haven't paid the $50 deposit yet, so this time slot is still open to other customers. <strong style='color:#2F241C;'>Pay your deposit soon so no one else books it before you.</strong> Your booking details are saved until {{HOLD_UNTIL}}.</p><div style='background:#faf6ee;border:1px solid #E8DDCC;border-radius:18px;padding:20px;margin:0 0 24px;'><table style='width:100%;border-collapse:collapse;font-size:14px;'><tr><td style='padding:8px 0;color:#7b6a58;'>Booking ID</td><td style='padding:8px 0;text-align:right;font-weight:800;'>#{{BOOKING_ID}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Location</td><td style='padding:8px 0;text-align:right;font-weight:800;'>{{LOCATION}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Date &amp; Time</td><td style='padding:8px 0;text-align:right;font-weight:800;'>{{BOOKING_DATE}} &middot; {{BOOKING_TIME}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Guests</td><td style='padding:8px 0;text-align:right;font-weight:800;'>{{GUESTS}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Package</td><td style='padding:8px 0;text-align:right;font-weight:800;'>{{PACKAGE}}</td></tr><tr><td style='padding:8px 0;color:#2F241C;font-weight:900;border-top:1px solid #E8DDCC;'>Total</td><td style='padding:8px 0;text-align:right;font-weight:900;border-top:1px solid #E8DDCC;'>{{GRAND_TOTAL}}</td></tr></table></div><div style='text-align:center;margin:0 0 20px;'><a href='{{RESUME_URL}}' style='display:inline-block;background:#F5D949;border:2px solid #221D16;box-shadow:4px 4px 0 #221D16;color:#221D16;text-decoration:none;font-size:16px;font-weight:900;padding:16px 36px;border-radius:16px;'>Complete My Booking</a></div><p style='text-align:center;color:#9A8B7C;font-size:13px;line-height:1.5;margin:0;'>Questions? Contact <a href='mailto:marketing@kokoamusement.com.au' style='color:#B86816;font-weight:800;text-decoration:none;'>marketing@kokoamusement.com.au</a></p></div></div>"
-            }
-          
-            var $email_html_1 {
-              value = $email_html_1
-                |replace:"{{CUSTOMER_NAME}}":$booking.customer_name
-            }
-          
-            var $email_html_1 {
-              value = $email_html_1
-                |replace:"{{HOLD_UNTIL}}":$hold_until_display_1
-            }
-          
-            var $email_html_1 {
-              value = $email_html_1
-                |replace:"{{BOOKING_ID}}":$booking.id
-            }
-          
-            var $email_html_1 {
-              value = $email_html_1
-                |replace:"{{LOCATION}}":$location_display_1
-            }
-          
-            var $email_html_1 {
-              value = $email_html_1
-                |replace:"{{BOOKING_DATE}}":$booking.date
-            }
-          
-            var $email_html_1 {
-              value = $email_html_1
-                |replace:"{{BOOKING_TIME}}":$booking_time_display_1
-            }
-          
-            var $email_html_1 {
-              value = $email_html_1
-                |replace:"{{GUESTS}}":$booking.guests
-            }
-          
-            var $email_html_1 {
-              value = $email_html_1
-                |replace:"{{PACKAGE}}":$package_display_1
-            }
-          
-            var $email_html_1 {
-              value = $email_html_1
-                |replace:"{{GRAND_TOTAL}}":$grand_total_display_1
-            }
-          
-            var $email_html_1 {
-              value = $email_html_1
-                |replace:"{{RESUME_URL}}":$resume_url_1
-            }
-          
-            api.request {
-              url = "https://api.resend.com/emails"
-              method = "POST"
-              params = {
-                from   : "KOKO Amusement <booking@mail.morefun.com.au>"
-                to     : $booking.customer_email
-                subject: $email_subject_1
-                html   : $email_html_1
-              }
-            
-              headers = []
-                |push:$resend_auth_header
-                |push:"Content-Type: application/json"
-            } as $SendResult1
-          
-            // Only mark as sent if Resend actually accepted the email.
-            // Without this check, a bad key / unverified domain / malformed
-            // request would still flip reminder_1_sent to true, and that
-            // booking would silently never be retried.
-            conditional {
-              if ($SendResult1.response.status >= 200 && $SendResult1.response.status < 300) {
+              if ($newer_booking_id_1 != null) {
+                var $skip_reason_1 {
+                  value = "Customer made a newer booking #"|concat:$newer_booking_id_1:""
+                }
+              
                 db.patch bookings {
                   field_name = "id"
                   field_value = $booking.id
-                  data = {reminder_1_sent: true, reminder_last_sent_at: $now_ts}
-                } as $UpdatedBooking1
+                  data = {
+                    reminder_1_sent     : true
+                    reminder_2_sent     : true
+                    reminder_skip_reason: $skip_reason_1
+                  }
+                } as $Skipped1
               
-                var $reminder_1_sent_count {
-                  value = $reminder_1_sent_count + 1
+                var $skipped_count {
+                  value = $skipped_count + 1
+                }
+              }
+            
+              else {
+                var $Location1 {
+                  value = null
+                }
+              
+                var $Package1 {
+                  value = null
+                }
+              
+                conditional {
+                  if ($booking.location_id != null && $booking.location_id != "") {
+                    db.get Locations {
+                      field_name = "id"
+                      field_value = $booking.location_id
+                    } as $Location1
+                  }
+                }
+              
+                conditional {
+                  if ($booking.package_id != null && $booking.package_id != "") {
+                    db.get Packages {
+                      field_name = "id"
+                      field_value = $booking.package_id
+                    } as $Package1
+                  }
+                }
+              
+                var $location_display_1 {
+                  value = ($Location1 != null ? $Location1.Name : "KOKO Amusement")|first_notempty:"KOKO Amusement"
+                }
+              
+                var $package_display_1 {
+                  value = ($Package1 != null ? $Package1.Name : "")|first_notempty:"Your package"
+                }
+              
+                var $booking_start_display_1 {
+                  value = $booking.start_ts
+                    |to_timestamp:"Australia/Sydney"
+                    |format_timestamp:"D, M j, H:i":"Australia/Sydney"
+                }
+              
+                var $booking_end_display_1 {
+                  value = $booking.end_ts
+                    |to_timestamp:"Australia/Sydney"
+                    |format_timestamp:"H:i":"Australia/Sydney"
+                }
+              
+                var $booking_time_display_1 {
+                  value = $booking_start_display_1|concat:" - ":""
+                }
+              
+                var $booking_time_display_1 {
+                  value = $booking_time_display_1|concat:$booking_end_display_1:""
+                }
+              
+                var $hold_until_ts_1 {
+                  value = $booking.created_at + 86400000
+                }
+              
+                var $hold_until_display_1 {
+                  value = $hold_until_ts_1
+                    |to_timestamp:"Australia/Sydney"
+                    |format_timestamp:"D j M, g:ia":"Australia/Sydney"
+                }
+              
+                var $grand_total_display_1 {
+                  value = "$"
+                    |concat:((($booking.grand_total_cents|first_notempty:0) / 100)|round:2):""
+                }
+              
+                var $booking_type_param_1 {
+                  value = ($booking.booking_type == "birthday_party") ? "party" : "group"
+                }
+              
+                var $resume_url_1 {
+                  value = "https://booking.morefun.com.au/booking/resume?booking_id="|concat:$booking.id:""
+                }
+              
+                var $resume_url_1 {
+                  value = $resume_url_1|concat:"&type=":""
+                }
+              
+                var $resume_url_1 {
+                  value = $resume_url_1|concat:$booking_type_param_1:""
+                }
+              
+                var $email_subject_1 {
+                  value = "Your KOKO booking isn't confirmed yet (#"|concat:$booking.id:""
+                }
+              
+                var $email_subject_1 {
+                  value = $email_subject_1|concat:")":""
+                }
+              
+                var $email_html_1 {
+                  value = "<div style='max-width:640px;margin:0 auto;padding:28px 20px;background:#FFFDF9;font-family:Arial,sans-serif;color:#2F241C;'><div style='background:#ffffff;border:1px solid #E8DDCC;border-radius:24px;padding:34px 28px;'><div style='display:inline-block;padding:8px 16px;border-radius:999px;background:#F5D949;border:2px solid #221D16;color:#221D16;font-size:11px;font-weight:900;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:18px;'>Not Confirmed Yet</div><h1 style='margin:0 0 12px;font-size:26px;line-height:1.2;color:#2F241C;'>Hi {{CUSTOMER_NAME}}, your KOKO time slot isn&rsquo;t locked in yet</h1><p style='margin:0 0 22px;color:#7b6a58;font-size:15px;line-height:1.6;'>You started a booking but haven't paid the $50 deposit yet, so this time slot is still open to other customers. <strong style='color:#2F241C;'>Pay your deposit soon so no one else books it before you.</strong> Your booking details are saved until {{HOLD_UNTIL}}.</p><div style='background:#faf6ee;border:1px solid #E8DDCC;border-radius:18px;padding:20px;margin:0 0 24px;'><table style='width:100%;border-collapse:collapse;font-size:14px;'><tr><td style='padding:8px 0;color:#7b6a58;'>Booking ID</td><td style='padding:8px 0;text-align:right;font-weight:800;'>#{{BOOKING_ID}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Location</td><td style='padding:8px 0;text-align:right;font-weight:800;'>{{LOCATION}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Date &amp; Time</td><td style='padding:8px 0;text-align:right;font-weight:800;'>{{BOOKING_DATE}} &middot; {{BOOKING_TIME}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Guests</td><td style='padding:8px 0;text-align:right;font-weight:800;'>{{GUESTS}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Package</td><td style='padding:8px 0;text-align:right;font-weight:800;'>{{PACKAGE}}</td></tr><tr><td style='padding:8px 0;color:#2F241C;font-weight:900;border-top:1px solid #E8DDCC;'>Total</td><td style='padding:8px 0;text-align:right;font-weight:900;border-top:1px solid #E8DDCC;'>{{GRAND_TOTAL}}</td></tr></table></div><div style='text-align:center;margin:0 0 20px;'><a href='{{RESUME_URL}}' style='display:inline-block;background:#F5D949;border:2px solid #221D16;box-shadow:4px 4px 0 #221D16;color:#221D16;text-decoration:none;font-size:16px;font-weight:900;padding:16px 36px;border-radius:16px;'>Complete My Booking</a></div><p style='text-align:center;color:#9A8B7C;font-size:13px;line-height:1.5;margin:0;'>Questions? Contact <a href='mailto:marketing@kokoamusement.com.au' style='color:#B86816;font-weight:800;text-decoration:none;'>marketing@kokoamusement.com.au</a></p></div></div>"
+                }
+              
+                var $email_html_1 {
+                  value = $email_html_1
+                    |replace:"{{CUSTOMER_NAME}}":$booking.customer_name
+                }
+              
+                var $email_html_1 {
+                  value = $email_html_1
+                    |replace:"{{HOLD_UNTIL}}":$hold_until_display_1
+                }
+              
+                var $email_html_1 {
+                  value = $email_html_1
+                    |replace:"{{BOOKING_ID}}":$booking.id
+                }
+              
+                var $email_html_1 {
+                  value = $email_html_1
+                    |replace:"{{LOCATION}}":$location_display_1
+                }
+              
+                var $email_html_1 {
+                  value = $email_html_1
+                    |replace:"{{BOOKING_DATE}}":$booking.date
+                }
+              
+                var $email_html_1 {
+                  value = $email_html_1
+                    |replace:"{{BOOKING_TIME}}":$booking_time_display_1
+                }
+              
+                var $email_html_1 {
+                  value = $email_html_1
+                    |replace:"{{GUESTS}}":$booking.guests
+                }
+              
+                var $email_html_1 {
+                  value = $email_html_1
+                    |replace:"{{PACKAGE}}":$package_display_1
+                }
+              
+                var $email_html_1 {
+                  value = $email_html_1
+                    |replace:"{{GRAND_TOTAL}}":$grand_total_display_1
+                }
+              
+                var $email_html_1 {
+                  value = $email_html_1
+                    |replace:"{{RESUME_URL}}":$resume_url_1
+                }
+              
+                api.request {
+                  url = "https://api.resend.com/emails"
+                  method = "POST"
+                  params = {
+                    from   : "KOKO Amusement <booking@mail.morefun.com.au>"
+                    to     : $booking.customer_email
+                    subject: $email_subject_1
+                    html   : $email_html_1
+                  }
+                
+                  headers = []
+                    |push:$resend_auth_header
+                    |push:"Content-Type: application/json"
+                } as $SendResult1
+              
+                // Only mark as sent if Resend actually accepted the email.
+                // Without this check, a bad key / unverified domain / malformed
+                // request would still flip reminder_1_sent to true, and that
+                // booking would silently never be retried.
+                conditional {
+                  if ($SendResult1.response.status >= 200 && $SendResult1.response.status < 300) {
+                    db.patch bookings {
+                      field_name = "id"
+                      field_value = $booking.id
+                      data = {reminder_1_sent: true, reminder_last_sent_at: $now_ts}
+                    } as $UpdatedBooking1
+                  
+                    var $reminder_1_sent_count {
+                      value = $reminder_1_sent_count + 1
+                    }
+                  }
                 }
               }
             }
@@ -252,176 +313,221 @@ query RunReminders verb=POST {
         // REMINDER 2 — sent 20h to 24h after the hold was created
         // ============================================================
         db.query bookings {
-          where = ($db.bookings.status == "hold" || $db.bookings.status == "pending_payment") && $db.bookings.reminder_2_sent == false && $db.bookings.customer_email != "" && $db.bookings.created_at < $twenty_hours_ago && $db.bookings.created_at > $twentyfour_hours_ago
+          where = ($db.bookings.status == "hold" || $db.bookings.status == "pending_payment") && $db.bookings.reminder_2_sent == false && $db.bookings.customer_email != "" && $db.bookings.created_at < $twenty_hours_ago && $db.bookings.created_at > $twentyfour_hours_ago && ($db.bookings.last_active_at == null || $db.bookings.last_active_at < $fifteen_min_ago)
           return = {type: "list"}
         } as $Reminder2Bookings
       
         foreach ($Reminder2Bookings) {
           each as $booking2 {
-            var $Location2 {
+            // Skip (and never retry) a hold when the same email has made a
+            // NEWER booking since — they re-did the booking (e.g. clicked
+            // Review again, which always creates a fresh hold) or already
+            // paid for another one. Reminding them about the old hold is
+            // confusing and can make them pay twice.
+            var $newer_booking_id_2 {
               value = null
             }
           
-            var $Package2 {
-              value = null
-            }
-          
-            conditional {
-              if ($booking2.location_id != null && $booking2.location_id != "") {
-                db.get Locations {
-                  field_name = "id"
-                  field_value = $booking2.location_id
-                } as $Location2
+            foreach ($RecentBookings) {
+              each as $other2 {
+                conditional {
+                  if ($other2.id != $booking2.id && $other2.created_at > $booking2.created_at && ($other2.customer_email|trim|to_lower) == ($booking2.customer_email|trim|to_lower)) {
+                    var $newer_booking_id_2 {
+                      value = $other2.id
+                    }
+                  }
+                }
               }
             }
           
             conditional {
-              if ($booking2.package_id != null && $booking2.package_id != "") {
-                db.get Packages {
-                  field_name = "id"
-                  field_value = $booking2.package_id
-                } as $Package2
-              }
-            }
-          
-            var $location_display_2 {
-              value = ($Location2 != null ? $Location2.Name : "KOKO Amusement")|first_notempty:"KOKO Amusement"
-            }
-          
-            var $package_display_2 {
-              value = ($Package2 != null ? $Package2.Name : "")|first_notempty:"Your package"
-            }
-          
-            var $booking_start_display_2 {
-              value = $booking2.start_ts
-                |to_timestamp:"Australia/Sydney"
-                |format_timestamp:"D, M j, H:i":"Australia/Sydney"
-            }
-          
-            var $booking_end_display_2 {
-              value = $booking2.end_ts
-                |to_timestamp:"Australia/Sydney"
-                |format_timestamp:"H:i":"Australia/Sydney"
-            }
-          
-            var $booking_time_display_2 {
-              value = $booking_start_display_2|concat:" - ":""
-            }
-          
-            var $booking_time_display_2 {
-              value = $booking_time_display_2|concat:$booking_end_display_2:""
-            }
-          
-            var $hold_until_ts_2 {
-              value = $booking2.created_at + 86400000
-            }
-          
-            var $hold_until_display_2 {
-              value = $hold_until_ts_2
-                |to_timestamp:"Australia/Sydney"
-                |format_timestamp:"D j M, g:ia":"Australia/Sydney"
-            }
-          
-            var $grand_total_display_2 {
-              value = "$"
-                |concat:((($booking2.grand_total_cents|first_notempty:0) / 100)|round:2):""
-            }
-          
-            var $booking_type_param_2 {
-              value = ($booking2.booking_type == "birthday_party") ? "party" : "group"
-            }
-          
-            var $resume_url_2 {
-              value = "https://booking.morefun.com.au/booking/resume?booking_id="|concat:$booking2.id:""
-            }
-          
-            var $resume_url_2 {
-              value = $resume_url_2|concat:"&type=":""
-            }
-          
-            var $resume_url_2 {
-              value = $resume_url_2|concat:$booking_type_param_2:""
-            }
-          
-            var $email_html_2 {
-              value = "<div style='max-width:640px;margin:0 auto;padding:28px 20px;background:#FFFDF9;font-family:Arial,sans-serif;color:#2F241C;'><div style='background:#ffffff;border:1px solid #E8DDCC;border-radius:24px;padding:34px 28px;'><div style='display:inline-block;padding:8px 16px;border-radius:999px;background:#FBEADA;border:2px solid #B8434E;color:#B8434E;font-size:11px;font-weight:900;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:18px;'>Last Chance</div><h1 style='margin:0 0 12px;font-size:26px;line-height:1.2;color:#2F241C;'>{{CUSTOMER_NAME}}, your KOKO booking expires in 4 hours</h1><p style='margin:0 0 22px;color:#7b6a58;font-size:15px;line-height:1.6;'>This is a final reminder &mdash; your time slot still isn&rsquo;t locked in, and other customers can book it at any time. Your saved booking expires at <strong style='color:#2F241C;'>{{HOLD_UNTIL}}</strong>; after that you&rsquo;ll need to start a new booking.</p><div style='background:#faf6ee;border:1px solid #E8DDCC;border-radius:18px;padding:20px;margin:0 0 24px;'><table style='width:100%;border-collapse:collapse;font-size:14px;'><tr><td style='padding:8px 0;color:#7b6a58;'>Booking ID</td><td style='padding:8px 0;text-align:right;font-weight:800;'>#{{BOOKING_ID}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Location</td><td style='padding:8px 0;text-align:right;font-weight:800;'>{{LOCATION}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Date &amp; Time</td><td style='padding:8px 0;text-align:right;font-weight:800;'>{{BOOKING_DATE}} &middot; {{BOOKING_TIME}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Guests</td><td style='padding:8px 0;text-align:right;font-weight:800;'>{{GUESTS}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Package</td><td style='padding:8px 0;text-align:right;font-weight:800;'>{{PACKAGE}}</td></tr><tr><td style='padding:8px 0;color:#2F241C;font-weight:900;border-top:1px solid #E8DDCC;'>Total</td><td style='padding:8px 0;text-align:right;font-weight:900;border-top:1px solid #E8DDCC;'>{{GRAND_TOTAL}}</td></tr></table></div><div style='text-align:center;margin:0 0 20px;'><a href='{{RESUME_URL}}' style='display:inline-block;background:#F5D949;border:2px solid #221D16;box-shadow:4px 4px 0 #221D16;color:#221D16;text-decoration:none;font-size:16px;font-weight:900;padding:16px 36px;border-radius:16px;'>Complete My Booking Now</a></div><p style='text-align:center;color:#9A8B7C;font-size:13px;line-height:1.5;margin:0;'>Questions? Contact <a href='mailto:marketing@kokoamusement.com.au' style='color:#B86816;font-weight:800;text-decoration:none;'>marketing@kokoamusement.com.au</a></p></div></div>"
-            }
-          
-            var $email_html_2 {
-              value = $email_html_2
-                |replace:"{{CUSTOMER_NAME}}":$booking2.customer_name
-            }
-          
-            var $email_html_2 {
-              value = $email_html_2
-                |replace:"{{HOLD_UNTIL}}":$hold_until_display_2
-            }
-          
-            var $email_html_2 {
-              value = $email_html_2
-                |replace:"{{BOOKING_ID}}":$booking2.id
-            }
-          
-            var $email_html_2 {
-              value = $email_html_2
-                |replace:"{{LOCATION}}":$location_display_2
-            }
-          
-            var $email_html_2 {
-              value = $email_html_2
-                |replace:"{{BOOKING_DATE}}":$booking2.date
-            }
-          
-            var $email_html_2 {
-              value = $email_html_2
-                |replace:"{{BOOKING_TIME}}":$booking_time_display_2
-            }
-          
-            var $email_html_2 {
-              value = $email_html_2
-                |replace:"{{GUESTS}}":$booking2.guests
-            }
-          
-            var $email_html_2 {
-              value = $email_html_2
-                |replace:"{{PACKAGE}}":$package_display_2
-            }
-          
-            var $email_html_2 {
-              value = $email_html_2
-                |replace:"{{GRAND_TOTAL}}":$grand_total_display_2
-            }
-          
-            var $email_html_2 {
-              value = $email_html_2
-                |replace:"{{RESUME_URL}}":$resume_url_2
-            }
-          
-            api.request {
-              url = "https://api.resend.com/emails"
-              method = "POST"
-              params = {
-                from   : "KOKO Amusement <booking@mail.morefun.com.au>"
-                to     : $booking2.customer_email
-                subject: "Last chance — your KOKO booking expires in 4 hours"
-                html   : $email_html_2
-              }
-            
-              headers = []
-                |push:$resend_auth_header
-                |push:"Content-Type: application/json"
-            } as $SendResult2
-          
-            conditional {
-              if ($SendResult2.response.status >= 200 && $SendResult2.response.status < 300) {
+              if ($newer_booking_id_2 != null) {
+                var $skip_reason_2 {
+                  value = "Customer made a newer booking #"|concat:$newer_booking_id_2:""
+                }
+              
                 db.patch bookings {
                   field_name = "id"
                   field_value = $booking2.id
-                  data = {reminder_2_sent: true, reminder_last_sent_at: $now_ts}
-                } as $UpdatedBooking2
+                  data = {
+                    reminder_1_sent     : true
+                    reminder_2_sent     : true
+                    reminder_skip_reason: $skip_reason_2
+                  }
+                } as $Skipped2
               
-                var $reminder_2_sent_count {
-                  value = $reminder_2_sent_count + 1
+                var $skipped_count {
+                  value = $skipped_count + 1
+                }
+              }
+            
+              else {
+                var $Location2 {
+                  value = null
+                }
+              
+                var $Package2 {
+                  value = null
+                }
+              
+                conditional {
+                  if ($booking2.location_id != null && $booking2.location_id != "") {
+                    db.get Locations {
+                      field_name = "id"
+                      field_value = $booking2.location_id
+                    } as $Location2
+                  }
+                }
+              
+                conditional {
+                  if ($booking2.package_id != null && $booking2.package_id != "") {
+                    db.get Packages {
+                      field_name = "id"
+                      field_value = $booking2.package_id
+                    } as $Package2
+                  }
+                }
+              
+                var $location_display_2 {
+                  value = ($Location2 != null ? $Location2.Name : "KOKO Amusement")|first_notempty:"KOKO Amusement"
+                }
+              
+                var $package_display_2 {
+                  value = ($Package2 != null ? $Package2.Name : "")|first_notempty:"Your package"
+                }
+              
+                var $booking_start_display_2 {
+                  value = $booking2.start_ts
+                    |to_timestamp:"Australia/Sydney"
+                    |format_timestamp:"D, M j, H:i":"Australia/Sydney"
+                }
+              
+                var $booking_end_display_2 {
+                  value = $booking2.end_ts
+                    |to_timestamp:"Australia/Sydney"
+                    |format_timestamp:"H:i":"Australia/Sydney"
+                }
+              
+                var $booking_time_display_2 {
+                  value = $booking_start_display_2|concat:" - ":""
+                }
+              
+                var $booking_time_display_2 {
+                  value = $booking_time_display_2|concat:$booking_end_display_2:""
+                }
+              
+                var $hold_until_ts_2 {
+                  value = $booking2.created_at + 86400000
+                }
+              
+                var $hold_until_display_2 {
+                  value = $hold_until_ts_2
+                    |to_timestamp:"Australia/Sydney"
+                    |format_timestamp:"D j M, g:ia":"Australia/Sydney"
+                }
+              
+                var $grand_total_display_2 {
+                  value = "$"
+                    |concat:((($booking2.grand_total_cents|first_notempty:0) / 100)|round:2):""
+                }
+              
+                var $booking_type_param_2 {
+                  value = ($booking2.booking_type == "birthday_party") ? "party" : "group"
+                }
+              
+                var $resume_url_2 {
+                  value = "https://booking.morefun.com.au/booking/resume?booking_id="|concat:$booking2.id:""
+                }
+              
+                var $resume_url_2 {
+                  value = $resume_url_2|concat:"&type=":""
+                }
+              
+                var $resume_url_2 {
+                  value = $resume_url_2|concat:$booking_type_param_2:""
+                }
+              
+                var $email_html_2 {
+                  value = "<div style='max-width:640px;margin:0 auto;padding:28px 20px;background:#FFFDF9;font-family:Arial,sans-serif;color:#2F241C;'><div style='background:#ffffff;border:1px solid #E8DDCC;border-radius:24px;padding:34px 28px;'><div style='display:inline-block;padding:8px 16px;border-radius:999px;background:#FBEADA;border:2px solid #B8434E;color:#B8434E;font-size:11px;font-weight:900;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:18px;'>Last Chance</div><h1 style='margin:0 0 12px;font-size:26px;line-height:1.2;color:#2F241C;'>{{CUSTOMER_NAME}}, your KOKO booking expires in 4 hours</h1><p style='margin:0 0 22px;color:#7b6a58;font-size:15px;line-height:1.6;'>This is a final reminder &mdash; your time slot still isn&rsquo;t locked in, and other customers can book it at any time. Your saved booking expires at <strong style='color:#2F241C;'>{{HOLD_UNTIL}}</strong>; after that you&rsquo;ll need to start a new booking.</p><div style='background:#faf6ee;border:1px solid #E8DDCC;border-radius:18px;padding:20px;margin:0 0 24px;'><table style='width:100%;border-collapse:collapse;font-size:14px;'><tr><td style='padding:8px 0;color:#7b6a58;'>Booking ID</td><td style='padding:8px 0;text-align:right;font-weight:800;'>#{{BOOKING_ID}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Location</td><td style='padding:8px 0;text-align:right;font-weight:800;'>{{LOCATION}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Date &amp; Time</td><td style='padding:8px 0;text-align:right;font-weight:800;'>{{BOOKING_DATE}} &middot; {{BOOKING_TIME}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Guests</td><td style='padding:8px 0;text-align:right;font-weight:800;'>{{GUESTS}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Package</td><td style='padding:8px 0;text-align:right;font-weight:800;'>{{PACKAGE}}</td></tr><tr><td style='padding:8px 0;color:#2F241C;font-weight:900;border-top:1px solid #E8DDCC;'>Total</td><td style='padding:8px 0;text-align:right;font-weight:900;border-top:1px solid #E8DDCC;'>{{GRAND_TOTAL}}</td></tr></table></div><div style='text-align:center;margin:0 0 20px;'><a href='{{RESUME_URL}}' style='display:inline-block;background:#F5D949;border:2px solid #221D16;box-shadow:4px 4px 0 #221D16;color:#221D16;text-decoration:none;font-size:16px;font-weight:900;padding:16px 36px;border-radius:16px;'>Complete My Booking Now</a></div><p style='text-align:center;color:#9A8B7C;font-size:13px;line-height:1.5;margin:0;'>Questions? Contact <a href='mailto:marketing@kokoamusement.com.au' style='color:#B86816;font-weight:800;text-decoration:none;'>marketing@kokoamusement.com.au</a></p></div></div>"
+                }
+              
+                var $email_html_2 {
+                  value = $email_html_2
+                    |replace:"{{CUSTOMER_NAME}}":$booking2.customer_name
+                }
+              
+                var $email_html_2 {
+                  value = $email_html_2
+                    |replace:"{{HOLD_UNTIL}}":$hold_until_display_2
+                }
+              
+                var $email_html_2 {
+                  value = $email_html_2
+                    |replace:"{{BOOKING_ID}}":$booking2.id
+                }
+              
+                var $email_html_2 {
+                  value = $email_html_2
+                    |replace:"{{LOCATION}}":$location_display_2
+                }
+              
+                var $email_html_2 {
+                  value = $email_html_2
+                    |replace:"{{BOOKING_DATE}}":$booking2.date
+                }
+              
+                var $email_html_2 {
+                  value = $email_html_2
+                    |replace:"{{BOOKING_TIME}}":$booking_time_display_2
+                }
+              
+                var $email_html_2 {
+                  value = $email_html_2
+                    |replace:"{{GUESTS}}":$booking2.guests
+                }
+              
+                var $email_html_2 {
+                  value = $email_html_2
+                    |replace:"{{PACKAGE}}":$package_display_2
+                }
+              
+                var $email_html_2 {
+                  value = $email_html_2
+                    |replace:"{{GRAND_TOTAL}}":$grand_total_display_2
+                }
+              
+                var $email_html_2 {
+                  value = $email_html_2
+                    |replace:"{{RESUME_URL}}":$resume_url_2
+                }
+              
+                api.request {
+                  url = "https://api.resend.com/emails"
+                  method = "POST"
+                  params = {
+                    from   : "KOKO Amusement <booking@mail.morefun.com.au>"
+                    to     : $booking2.customer_email
+                    subject: "Last chance — your KOKO booking expires in 4 hours"
+                    html   : $email_html_2
+                  }
+                
+                  headers = []
+                    |push:$resend_auth_header
+                    |push:"Content-Type: application/json"
+                } as $SendResult2
+              
+                conditional {
+                  if ($SendResult2.response.status >= 200 && $SendResult2.response.status < 300) {
+                    db.patch bookings {
+                      field_name = "id"
+                      field_value = $booking2.id
+                      data = {reminder_2_sent: true, reminder_last_sent_at: $now_ts}
+                    } as $UpdatedBooking2
+                  
+                    var $reminder_2_sent_count {
+                      value = $reminder_2_sent_count + 1
+                    }
+                  }
                 }
               }
             }
@@ -435,5 +541,6 @@ query RunReminders verb=POST {
     error_message  : $error_message
     reminder_1_sent: $reminder_1_sent_count
     reminder_2_sent: $reminder_2_sent_count
+    skipped_newer  : $skipped_count
   }
 }

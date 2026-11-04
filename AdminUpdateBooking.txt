@@ -1,0 +1,351 @@
+// Staff admin page (koko-admin.html) — edits one booking. Only the fields
+// listed in `input` can change, and only the ones actually sent (null = leave
+// as is). Each save appends a timestamped line to admin_log (newest first) so
+// there's a record of who-changed-what. Paid bookings that change are picked
+// up by SyncBookings.gs within the hour: calendar event updated and the store
+// gets a [BOOKING CHANGED] / [BOOKING CANCELLED] email.
+// Locked behind the ADMIN_KEY workspace variable, like AdminBookings.
+query AdminUpdateBooking verb=POST {
+  api_group = "KOKO Booking"
+
+  input {
+    text key
+    int booking_id
+    text status?
+    text date? filters=trim
+    timestamp start_ts?
+    timestamp end_ts?
+    int location_id?
+    int party_room_id?
+    int package_id?
+    int guests?
+    text customer_name?
+    text customer_email?
+    text birthday_child_name?
+    text birthday_child_gender?
+    text average_age?
+    text booking_notes?
+    int package_total_cents?
+    int addons_total_cents?
+    int grand_total_cents?
+    int deposit_paid_cents?
+    int balance_due_cents?
+    text customer_phone?
+    text log_line?
+  
+    // Comma list of text fields to blank out (an empty string input arrives
+    // as null, i.e. "leave as is"), e.g. "booking_notes,average_age"
+    text clear?
+  }
+
+  stack {
+    var $error_message {
+      value = null
+    }
+  
+    var $Booking {
+      value = null
+    }
+  
+    var $Existing {
+      value = null
+    }
+  
+    var $data {
+      value = {}
+    }
+  
+    var $allowed_statuses {
+      value = [
+        "hold"
+        "pending_payment"
+        "deposit_paid"
+        "paid"
+        "confirmed"
+        "cancelled"
+        "expired"
+        "refunded"
+      ]
+    }
+  
+    conditional {
+      if ($input.key == null || $input.key == "" || $input.key != $env.ADMIN_KEY) {
+        var $error_message {
+          value = "Unauthorized"
+        }
+      }
+    
+      elseif ($input.status != null && ($input.status|in:$allowed_statuses) == false) {
+        var $error_message {
+          value = "Unknown status"
+        }
+      }
+    
+      else {
+        db.get bookings {
+          field_name = "id"
+          field_value = $input.booking_id
+        } as $Existing
+      
+        conditional {
+          if ($Existing == null) {
+            var $error_message {
+              value = "Booking not found"
+            }
+          }
+        }
+      }
+    }
+  
+    conditional {
+      if ($error_message == null) {
+        conditional {
+          if ($input.status != null) {
+            var $data {
+              value = $data|set:"status":$input.status
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.date != null) {
+            var $data {
+              value = $data|set:"date":$input.date
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.start_ts != null) {
+            var $data {
+              value = $data|set:"start_ts":$input.start_ts
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.end_ts != null) {
+            var $data {
+              value = $data|set:"end_ts":$input.end_ts
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.location_id != null) {
+            var $data {
+              value = $data
+                |set:"location_id":$input.location_id
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.party_room_id != null) {
+            var $data {
+              value = $data
+                |set:"party_room_id":$input.party_room_id
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.package_id != null) {
+            var $data {
+              value = $data
+                |set:"package_id":$input.package_id
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.guests != null) {
+            var $data {
+              value = $data|set:"guests":$input.guests
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.customer_name != null) {
+            var $data {
+              value = $data
+                |set:"customer_name":$input.customer_name
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.customer_email != null) {
+            var $data {
+              value = $data
+                |set:"customer_email":$input.customer_email
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.birthday_child_name != null) {
+            var $data {
+              value = $data
+                |set:"birthday_child_name":$input.birthday_child_name
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.birthday_child_gender != null) {
+            var $data {
+              value = $data
+                |set:"birthday_child_gender":$input.birthday_child_gender
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.average_age != null) {
+            var $data {
+              value = $data
+                |set:"average_age":$input.average_age
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.booking_notes != null) {
+            var $data {
+              value = $data
+                |set:"booking_notes":$input.booking_notes
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.package_total_cents != null) {
+            var $data {
+              value = $data
+                |set:"package_total_cents":$input.package_total_cents
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.addons_total_cents != null) {
+            var $data {
+              value = $data
+                |set:"addons_total_cents":$input.addons_total_cents
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.grand_total_cents != null) {
+            var $data {
+              value = $data
+                |set:"grand_total_cents":$input.grand_total_cents
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.deposit_paid_cents != null) {
+            var $data {
+              value = $data
+                |set:"deposit_paid_cents":$input.deposit_paid_cents
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.balance_due_cents != null) {
+            var $data {
+              value = $data
+                |set:"balance_due_cents":$input.balance_due_cents
+            }
+          }
+        }
+      
+        conditional {
+          if ((","|concat:($input.clear|first_notempty:""):""|concat:",":"")|contains:",booking_notes,") {
+            var $data {
+              value = $data|set:"booking_notes":""
+            }
+          }
+        }
+      
+        conditional {
+          if ((","|concat:($input.clear|first_notempty:""):""|concat:",":"")|contains:",birthday_child_name,") {
+            var $data {
+              value = $data|set:"birthday_child_name":""
+            }
+          }
+        }
+      
+        conditional {
+          if ((","|concat:($input.clear|first_notempty:""):""|concat:",":"")|contains:",birthday_child_gender,") {
+            var $data {
+              value = $data|set:"birthday_child_gender":""
+            }
+          }
+        }
+      
+        conditional {
+          if ((","|concat:($input.clear|first_notempty:""):""|concat:",":"")|contains:",average_age,") {
+            var $data {
+              value = $data|set:"average_age":""
+            }
+          }
+        }
+      
+        // Phone is an int column (leading 0 dropped, as everywhere else)
+        conditional {
+          if ($input.customer_phone != null) {
+            var $phone_digits {
+              value = $input.customer_phone
+                |replace:" ":""
+                |replace:"-":""
+                |replace:"(":""
+                |replace:")":""
+                |replace:"+61":"0"
+            }
+          
+            var $data {
+              value = $data
+                |set:"customer_phone":($phone_digits|to_int)
+            }
+          }
+        }
+      
+        var $now_display {
+          value = "now"
+            |to_timestamp:"Australia/Sydney"
+            |format_timestamp:"Y-m-d H:i":"Australia/Sydney"
+        }
+      
+        var $log_entry {
+          value = $now_display
+            |concat:" — ":""
+            |concat:($input.log_line|first_notempty:"edited"):""
+        }
+      
+        var $new_log {
+          value = $log_entry
+            |concat:"\n":""
+            |concat:($Existing.admin_log|first_notempty:""):""
+        }
+      
+        var $data {
+          value = $data|set:"admin_log":$new_log
+        }
+      
+        db.patch bookings {
+          field_name = "id"
+          field_value = $Existing.id
+          data = $data
+        } as $Booking
+      }
+    }
+  }
+
+  response = {error_message: $error_message, booking: $Booking}
+}

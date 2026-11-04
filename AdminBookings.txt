@@ -1,0 +1,68 @@
+// Staff admin page (koko-admin.html) — loads every booking plus the
+// locations / rooms / packages needed to show and edit them. Contains all
+// customer PII, so it's locked behind the ADMIN_KEY workspace variable
+// (Settings → Workspace Variables). Unset = every call is refused.
+// POST (not GET) so the key never ends up in a URL / server log.
+query AdminBookings verb=POST {
+  api_group = "KOKO Booking"
+
+  input {
+    text key
+  }
+
+  stack {
+    var $error_message {
+      value = null
+    }
+  
+    var $Bookings {
+      value = []
+    }
+  
+    var $Locations {
+      value = []
+    }
+  
+    var $Rooms {
+      value = []
+    }
+  
+    var $Packages {
+      value = []
+    }
+  
+    conditional {
+      if ($input.key == null || $input.key == "" || $input.key != $env.ADMIN_KEY) {
+        var $error_message {
+          value = "Unauthorized"
+        }
+      }
+    
+      else {
+        db.query bookings {
+          return = {type: "list"}
+        } as $Bookings
+      
+        db.query Locations {
+          return = {type: "list"}
+        } as $Locations
+      
+        db.query party_rooms {
+          return = {type: "list"}
+        } as $Rooms
+      
+        db.query Packages {
+          return = {type: "list"}
+        } as $Packages
+      }
+    }
+  }
+
+  response = {
+    error_message: $error_message
+    bookings     : $Bookings
+    locations    : $Locations
+    rooms        : $Rooms
+    packages     : $Packages
+  }
+}

@@ -491,7 +491,8 @@ query ResendConfirmationEmail verb=POST {
             }
           
             var $email_subject {
-              value = $email_subject|replace:"KOKO Booking Deposit Confirmation":"KOKO Booking Confirmation"
+              value = $email_subject
+                |replace:"KOKO Booking Deposit Confirmation":"KOKO Booking Confirmation"
             }
           }
         }
