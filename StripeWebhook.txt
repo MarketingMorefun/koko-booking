@@ -195,13 +195,18 @@ query StripeWebhook verb=POST {
                 // ConfirmGroupBooking). Record the whole amount as paid so the
                 // balance comes out at 0; everything else stays a $50 deposit.
                 var $payment_type {
-                  value = $session|get:"metadata"|get:"payment_type"
+                  value = $session
+                    |get:"metadata"
+                    |get:"payment_type"
                 }
               
                 conditional {
                   if ($payment_type == "full") {
                     var $deposit_paid_cents {
-                      value = $session|get:"metadata"|get:"deposit_cents"|to_int
+                      value = $session
+                        |get:"metadata"
+                        |get:"deposit_cents"
+                        |to_int
                     }
                   }
                 }
@@ -580,7 +585,8 @@ query StripeWebhook verb=POST {
                     }
                   
                     var $email_subject {
-                      value = $email_subject|replace:"KOKO Booking Deposit Confirmation":"KOKO Booking Confirmation"
+                      value = $email_subject
+                        |replace:"KOKO Booking Deposit Confirmation":"KOKO Booking Confirmation"
                     }
                   }
                 }
@@ -633,8 +639,12 @@ query StripeWebhook verb=POST {
               }
             
               elseif ($event_type == "checkout.session.expired") {
+                // Only an unpaid online hold can lapse. A booking that's paid,
+                // fully paid or confirmed by hand (e.g. invoice / payment-link
+                // groups) must never flip to expired just because someone
+                // opened a checkout page and walked away.
                 conditional {
-                  if ($Booking.status != "deposit_paid") {
+                  if ($Booking.status == "hold" || $Booking.status == "pending_payment") {
                     db.patch bookings {
                       field_name = "id"
                       field_value = $Booking.id
@@ -648,7 +658,7 @@ query StripeWebhook verb=POST {
                 
                   else {
                     var $message {
-                      value = "Booking already deposit paid, expired event ignored"
+                      value = "Booking is not an unpaid hold, expired event ignored"
                     }
                   }
                 }
