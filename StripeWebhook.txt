@@ -356,22 +356,28 @@ query StripeWebhook verb=POST {
               
                 var $package_total_display {
                   value = "$"
-                    |concat:(($Booking.package_total_cents / 100)|round:2):""
+                    |concat:(($Booking.package_total_cents / 100)|number_format:2:".":","):""
                 }
               
                 var $addons_total_display {
                   value = "$"
-                    |concat:(($Booking.addons_total_cents / 100)|round:2):""
+                    |concat:(($Booking.addons_total_cents / 100)|number_format:2:".":","):""
                 }
               
                 var $grand_total_display {
                   value = "$"
-                    |concat:(($Booking.grand_total_cents / 100)|round:2):""
+                    |concat:(($Booking.grand_total_cents / 100)|number_format:2:".":","):""
                 }
               
                 var $remaining_balance_display {
                   value = "$"
-                    |concat:(($remaining_balance_cents / 100)|round:2):""
+                    |concat:(($remaining_balance_cents / 100)|number_format:2:".":","):""
+                }
+              
+                // Show what was actually paid (the $50 deposit, or the full amount).
+                var $deposit_paid_display {
+                  value = "$"
+                    |concat:(($deposit_paid_cents / 100)|number_format:2:".":","):""
                 }
               
                 // Date row shows the full date, so Booking Time only needs
@@ -468,7 +474,7 @@ query StripeWebhook verb=POST {
                   
                     var $discount_display {
                       value = "-$"
-                        |concat:(($Booking.discount_cents / 100)|round:2):""
+                        |concat:(($Booking.discount_cents / 100)|number_format:2:".":","):""
                     }
                   
                     var $discount_row {
@@ -520,12 +526,12 @@ query StripeWebhook verb=POST {
                   
                     var $a_unit_display {
                       value = "$"
-                        |concat:(($a_unit / 100)|round:2):""
+                        |concat:(($a_unit / 100)|number_format:2:".":","):""
                     }
                   
                     var $a_line_display {
                       value = "$"
-                        |concat:(($a_line / 100)|round:2):""
+                        |concat:(($a_line / 100)|number_format:2:".":","):""
                     }
                   
                     var $a_label_html {

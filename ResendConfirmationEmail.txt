@@ -236,27 +236,27 @@ query ResendConfirmationEmail verb=POST {
       
         var $package_total_display {
           value = "$"
-            |concat:(($pkg_cents / 100)|round:2):""
+            |concat:(($pkg_cents / 100)|number_format:2:".":","):""
         }
       
         var $addons_total_display {
           value = "$"
-            |concat:(($add_cents / 100)|round:2):""
+            |concat:(($add_cents / 100)|number_format:2:".":","):""
         }
       
         var $grand_total_display {
           value = "$"
-            |concat:(($grand_cents / 100)|round:2):""
+            |concat:(($grand_cents / 100)|number_format:2:".":","):""
         }
       
         var $deposit_paid_display {
           value = "$"
-            |concat:(($deposit_cents / 100)|round:2):""
+            |concat:(($deposit_cents / 100)|number_format:2:".":","):""
         }
       
         var $remaining_balance_display {
           value = "$"
-            |concat:(($remaining_balance_cents / 100)|round:2):""
+            |concat:(($remaining_balance_cents / 100)|number_format:2:".":","):""
         }
       
         conditional {
@@ -367,7 +367,7 @@ query ResendConfirmationEmail verb=POST {
           
             var $discount_display {
               value = "-$"
-                |concat:(($Booking.discount_cents / 100)|round:2):""
+                |concat:(($Booking.discount_cents / 100)|number_format:2:".":","):""
             }
           
             var $discount_row {
@@ -419,12 +419,12 @@ query ResendConfirmationEmail verb=POST {
           
             var $a_unit_display {
               value = "$"
-                |concat:(($a_unit / 100)|round:2):""
+                |concat:(($a_unit / 100)|number_format:2:".":","):""
             }
           
             var $a_line_display {
               value = "$"
-                |concat:(($a_line / 100)|round:2):""
+                |concat:(($a_line / 100)|number_format:2:".":","):""
             }
           
             var $a_label_html {
