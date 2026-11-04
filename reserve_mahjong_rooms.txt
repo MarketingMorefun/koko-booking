@@ -116,6 +116,10 @@ function reserve_mahjong_rooms {
                       value = $o|get:"rooms":"0"|to_int
                     }
                   
+                    var $game_type {
+                      value = $o|get:"game":""
+                    }
+                  
                     var $hold_name {
                       value = "KOKO group #"
                         |concat:($B.id|to_text):""
@@ -148,6 +152,7 @@ function reserve_mahjong_rooms {
                           customer_name : $hold_name
                           customer_phone: $hold_phone
                           booking_notes : $hold_notes
+                          game_type     : $game_type
                         }
                       }
                     
@@ -167,26 +172,28 @@ function reserve_mahjong_rooms {
                       
                         var $held_text {
                           value = $held_text
-                            |push:(($a|get:"option_label":"")
-                              |concat:" → ":""
-                              |concat:($Hold.response.result|get:"room_names":[]|join:", "):""
-                            )
+                            |push:```
+                              ($a|get:"option_label":"")
+                                                            |concat:" → ":""
+                                                            |concat:($Hold.response.result|get:"room_names":[]|join:", "):""
+                              ```
                         }
                       }
                     
                       else {
                         var $errors {
                           value = $errors
-                            |push:(($a|get:"option_label":"")
-                              |concat:": ":""
-                              |concat:($Hold.response.result
-                                |get:"error_message":("HTTP "
-                                  |concat:($Hold.response.status|to_text):""
-                                  |concat:" ":""
-                                  |concat:($Hold.response.result|json_encode):""
-                                )
-                              ):""
-                            )
+                            |push:```
+                              ($a|get:"option_label":"")
+                                                            |concat:": ":""
+                                                            |concat:($Hold.response.result
+                                                              |get:"error_message":("HTTP "
+                                                                |concat:($Hold.response.status|to_text):""
+                                                                |concat:" ":""
+                                                                |concat:($Hold.response.result|json_encode):""
+                                                              )
+                                                            ):""
+                              ```
                         }
                       }
                     }

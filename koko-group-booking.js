@@ -797,11 +797,14 @@ async function checkGroupRoomExtension(roomExtEl){
 // separate Cityheroes mahjong system. The customer picks a start time, hours
 // and number of rooms; we only offer as many rooms as that system has free
 // for the window. qty = rooms x hours (priced per room per hour). The choice
-// travels in the add-on's option ("mj|type=..|rooms=..|hours=..|start=<ms>")
+// travels in the add-on's option ("mj|type=..|rooms=..|hours=..|start=<ms>|game=..")
 // and the rooms are actually held there once the deposit is paid
 // (reserve_mahjong_rooms in Xano).
 const MAHJONG_API="https://x8ki-letl-twmt.n7.xano.io/api:Eq8OZnxt";
 const MAHJONG_VENUES={Haymarket:"haymarket",Burwood:"burwood",KOKO_Cityheroes_Hornsby:"hornsby"};
+// Tile sets, same codes and wording as the mahjong system. Rooms have a usual
+// set but staff can swap tiles, so this doesn't change which rooms are free.
+const MAHJONG_GAMES=[["flowers_144","With flowers (144 tiles)"],["no_flowers_136","No flowers (136 tiles)"],["sichuan_108","Sichuan (108 tiles)"]];
 const _mahjongAvailability={};
 function loadMahjongAvailability(venue,date){
   const key=venue+"|"+date;
@@ -849,6 +852,12 @@ function renderMahjongAddonCard(list,addon,addonId){
     wrap.appendChild(control);
     return wrap;
   };
+  const gameSel=document.createElement("select");
+  const g0=document.createElement("option");g0.value="";g0.textContent="Choose a style";gameSel.appendChild(g0);
+  MAHJONG_GAMES.forEach(function(g){const o=document.createElement("option");o.value=g[0];o.textContent=g[1];gameSel.appendChild(o);});
+  const gameField=field("Mahjong style",gameSel);
+  gameField.style.marginBottom="10px";
+  card.appendChild(gameField);
   const startSel=document.createElement("select");
   const hoursSel=document.createElement("select");
   const grid=el("div","");
@@ -878,11 +887,12 @@ function renderMahjongAddonCard(list,addon,addonId){
     if(rooms<=0){if(idx>-1) window.groupBookingState.addons.splice(idx,1);return;}
     const w=windowTs();
     const hours=Number(hoursSel.value||1);
+    const game=MAHJONG_GAMES.find(function(g){return g[0]===gameSel.value;});
     const payload={
       addon_id:addonId,
       qty:rooms*hours,
-      option:"mj|type="+roomType+"|rooms="+rooms+"|hours="+hours+"|start="+w.start,
-      option_label:rooms+" "+roomType+" room"+(rooms>1?"s":"")+" × "+hours+"h, "+mahjongTime(w.start)+"–"+mahjongTime(w.end)
+      option:"mj|type="+roomType+"|rooms="+rooms+"|hours="+hours+"|start="+w.start+(game?"|game="+game[0]:""),
+      option_label:rooms+" "+roomType+" room"+(rooms>1?"s":"")+" × "+hours+"h, "+mahjongTime(w.start)+"–"+mahjongTime(w.end)+(game?" · "+game[1]:"")
     };
     if(idx>-1) window.groupBookingState.addons[idx]=payload;
     else window.groupBookingState.addons.push(payload);
@@ -910,8 +920,10 @@ function renderMahjongAddonCard(list,addon,addonId){
   }
   startSel.addEventListener("change",function(){fillHours();refresh();});
   hoursSel.addEventListener("change",refresh);
+  gameSel.addEventListener("change",function(){sync();});
   minus.addEventListener("click",function(){if(rooms>0){rooms--;refresh();}});
   plus.addEventListener("click",function(){
+    if(!gameSel.value){msg("Please choose a mahjong style first.",true);gameSel.focus();return;}
     if(rooms<free){rooms++;refresh();}
     else msg(free?"Only "+free+" "+roomType+" room"+(free>1?"s are":" is")+" free at that time.":"No "+roomType+" rooms are free at that time — try another start time.",true);
   });
