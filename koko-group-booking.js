@@ -792,9 +792,153 @@ async function checkGroupRoomExtension(roomExtEl){
   }
 }
 
+// ---- Mahjong rooms (Cityheroes mahjong booking system) ----
+// Mahjong add-ons ("mahjong-single" / "mahjong-twin") are real rooms in the
+// separate Cityheroes mahjong system. The customer picks a start time, hours
+// and number of rooms; we only offer as many rooms as that system has free
+// for the window. qty = rooms x hours (priced per room per hour). The choice
+// travels in the add-on's option ("mj|type=..|rooms=..|hours=..|start=<ms>")
+// and the rooms are actually held there once the deposit is paid
+// (reserve_mahjong_rooms in Xano).
+const MAHJONG_API="https://x8ki-letl-twmt.n7.xano.io/api:Eq8OZnxt";
+const MAHJONG_VENUES={Haymarket:"haymarket",Burwood:"burwood",KOKO_Cityheroes_Hornsby:"hornsby"};
+const _mahjongAvailability={};
+function loadMahjongAvailability(venue,date){
+  const key=venue+"|"+date;
+  if(!_mahjongAvailability[key]){
+    _mahjongAvailability[key]=fetch(MAHJONG_API+"/GetAvailability?venue="+encodeURIComponent(venue)+"&date="+encodeURIComponent(date))
+      .then(function(r){return r.json();})
+      .catch(function(){delete _mahjongAvailability[key];return null;});
+  }
+  return _mahjongAvailability[key];
+}
+function mahjongTime(ts){
+  return new Date(ts).toLocaleTimeString("en-AU",{timeZone:"Australia/Sydney",hour:"numeric",minute:"2-digit"}).replace(" ","").toLowerCase();
+}
+function mahjongFreeRooms(data,roomType,startTs,endTs){
+  const rooms=(data.rooms||[]).filter(function(r){return r.room_type===roomType;});
+  const free=rooms.filter(function(r){
+    return !(data.busy||[]).some(function(b){return Number(b.room_id)===Number(r.id)&&Number(b.start_ts)<endTs&&Number(b.end_ts)>startTs;});
+  });
+  return {free:free.length,total:rooms.length};
+}
+function renderMahjongAddonCard(list,addon,addonId){
+  const roomType=String(addon.slug).indexOf("twin")>-1?"twin":"single";
+  const venue=MAHJONG_VENUES[window.groupBookingState.location_slug];
+  const date=window.groupBookingState.date;
+  const card=el("div","");
+  card.className="koko-addon-card";
+  const title=el("div",addon.name || "Mahjong");
+  title.className="koko-addon-title";
+  card.appendChild(title);
+  const meta=el("div",money(addonPrice(addon))+" · per room per hour");
+  meta.className="koko-addon-meta";
+  card.appendChild(meta);
+  const note=addonNote(addon);
+  if(note){const n=el("div",note);n.className="koko-addon-note";card.appendChild(n);}
+  const status=el("div","Checking which rooms are free...");
+  status.style.cssText="font-size:13px;font-weight:700;line-height:1.5;color:#7B6A58;font-family:'Maven Pro',Arial,sans-serif;";
+  list.appendChild(card);
+  if(!venue||!date){status.textContent="Mahjong rooms can't be booked online for this venue.";card.appendChild(status);return;}
+
+  const field=function(label,control){
+    const wrap=el("label","");
+    wrap.style.cssText="display:grid;gap:4px;font-family:'Maven Pro',Arial,sans-serif;font-size:12px;font-weight:800;color:#7B6A58;text-transform:uppercase;letter-spacing:.04em;";
+    wrap.appendChild(el("span",label));
+    control.className="koko-addon-select";
+    wrap.appendChild(control);
+    return wrap;
+  };
+  const startSel=document.createElement("select");
+  const hoursSel=document.createElement("select");
+  const grid=el("div","");
+  grid.style.cssText="display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+  grid.appendChild(field("Start time",startSel));
+  grid.appendChild(field("Hours",hoursSel));
+  card.appendChild(grid);
+  card.appendChild(status);
+  const row=el("div","");
+  row.className="koko-addon-qty";
+  const minus=document.createElement("button");minus.type="button";minus.textContent="-";
+  const count=el("span","0");
+  const plus=document.createElement("button");plus.type="button";plus.textContent="+";
+  const roomsLabel=el("span","rooms");
+  roomsLabel.style.cssText="font-family:'Maven Pro',Arial,sans-serif;font-size:13px;font-weight:700;color:#7B6A58;align-self:center;";
+  row.appendChild(minus);row.appendChild(count);row.appendChild(plus);row.appendChild(roomsLabel);
+  card.appendChild(row);
+
+  let data=null,rooms=0,free=0;
+  function windowTs(){
+    const start=Number(startSel.value||0);
+    return {start:start,end:start+Number(hoursSel.value||1)*3600000};
+  }
+  function sync(){
+    count.textContent=String(rooms);
+    const idx=window.groupBookingState.addons.findIndex(function(i){return i.addon_id===addonId;});
+    if(rooms<=0){if(idx>-1) window.groupBookingState.addons.splice(idx,1);return;}
+    const w=windowTs();
+    const hours=Number(hoursSel.value||1);
+    const payload={
+      addon_id:addonId,
+      qty:rooms*hours,
+      option:"mj|type="+roomType+"|rooms="+rooms+"|hours="+hours+"|start="+w.start,
+      option_label:rooms+" "+roomType+" room"+(rooms>1?"s":"")+" × "+hours+"h, "+mahjongTime(w.start)+"–"+mahjongTime(w.end)
+    };
+    if(idx>-1) window.groupBookingState.addons[idx]=payload;
+    else window.groupBookingState.addons.push(payload);
+  }
+  function refresh(){
+    if(!data) return;
+    const w=windowTs();
+    const f=mahjongFreeRooms(data,roomType,w.start,w.end);
+    free=f.free;
+    if(rooms>free) rooms=free;
+    if(!f.total) status.textContent="This venue has no "+roomType+" mahjong rooms.";
+    else if(!free) status.textContent="No "+roomType+" rooms free "+mahjongTime(w.start)+"–"+mahjongTime(w.end)+" — try another start time.";
+    else status.textContent=free+" of "+f.total+" "+roomType+" room"+(f.total>1?"s":"")+" free "+mahjongTime(w.start)+"–"+mahjongTime(w.end)+".";
+    status.style.color=free?"#2E7D32":"#B86816";
+    sync();
+    debouncedGroupQuote();
+  }
+  function fillHours(){
+    const start=Number(startSel.value||0);
+    const maxH=Math.max(1,Math.min(6,Math.floor((Number(data.close_ts)-start)/3600000)));
+    const keep=Number(hoursSel.value||2);
+    hoursSel.innerHTML="";
+    for(let h=1;h<=maxH;h++){const o=document.createElement("option");o.value=String(h);o.textContent=h+" hour"+(h>1?"s":"");hoursSel.appendChild(o);}
+    hoursSel.value=String(Math.min(keep,maxH));
+  }
+  startSel.addEventListener("change",function(){fillHours();refresh();});
+  hoursSel.addEventListener("change",refresh);
+  minus.addEventListener("click",function(){if(rooms>0){rooms--;refresh();}});
+  plus.addEventListener("click",function(){
+    if(rooms<free){rooms++;refresh();}
+    else msg(free?"Only "+free+" "+roomType+" room"+(free>1?"s are":" is")+" free at that time.":"No "+roomType+" rooms are free at that time — try another start time.",true);
+  });
+
+  loadMahjongAvailability(venue,date).then(function(d){
+    if(!d || d.error_message || d.is_closed || !d.open_ts){status.textContent="Mahjong rooms aren't available on this date.";return;}
+    data=d;
+    const step=1800000;
+    const nowTs=Number(d.now_ts||Date.now());
+    const groupStart=Number(window.groupBookingState.start_ts||0);
+    let first=Number(d.open_ts);
+    while(first<nowTs) first+=step;
+    for(let t=first;t+3600000<=Number(d.close_ts);t+=step){
+      const o=document.createElement("option");o.value=String(t);o.textContent=mahjongTime(t);startSel.appendChild(o);
+    }
+    if(!startSel.options.length){status.textContent="Mahjong rooms aren't available on this date.";return;}
+    const pick=Array.from(startSel.options).find(function(o){return Number(o.value)>=groupStart;});
+    startSel.value=(pick||startSel.options[0]).value;
+    fillHours();
+    refresh();
+  });
+}
+
 function renderGroupAddonCard(list,addon){
   const addonId=addon.addon_id || addon.id;
   if(!addonId) return;
+  if(String(addon.slug||"").indexOf("mahjong-")===0) return renderMahjongAddonCard(list,addon,addonId);
   let qty=0;
   let selected="";
   const opts=addonOptions(addon);

@@ -89,6 +89,7 @@ the Xano UI since the repo was last synced. Xano reformats on save (and prefers
 | File | Purpose |
 |---|---|
 | `mailchimp_subscribe.txt` | Upserts one contact into the Mailchimp audience `873666e056` ("Koko Amusement") with an optional tag; key = workspace variable `MC_API_KEY`. Uses `status_if_new`, so anyone who unsubscribed stays unsubscribed. Called by `CreateBooking`/`CreateGroupBooking` when `marketing_consent` is ticked (tag `online booking`) and by `NewsletterSignup` (tag `website newsletter`). Returns `{ok, status, detail}`. |
+| `reserve_mahjong_rooms.txt` | Holds the mahjong rooms a group booking added (add-on `option` `mj|type=single\|twin|rooms=N|hours=H|start=<ms>`) in the separate **Cityheroes mahjong** Xano (`api:Eq8OZnxt`) via its `PartnerHoldCreate` endpoint, authenticated by the shared secret in KOKO table `partner_keys` (row `cityheroes_mahjong`) = Cityheroes `settings.koko_partner_secret`. Called by `StripeWebhook` once the deposit is paid; skips bookings whose `mahjong_hold_ids` is already set. Held rooms are appended to `booking_notes`; failures too, plus an `[ACTION NEEDED]` email to marketing. KOKO location → mahjong venue: 6 Haymarket → `haymarket`, 3 Burwood → `burwood`, 11 Cityheroes Hornsby → `hornsby`. |
 | `expire_stale_holds.txt` | Called via `function.run` from `CreateBooking`/`CreateGroupBooking`. Sweeps `hold`/`pending_payment` bookings older than 24h to `expired` (must stay 24h — the reminder emails at 15 min/20h rely on the booking still reading `hold`/`pending_payment` that whole window). Releases any credit that booking had reserved back to `available` so it isn't stranded. |
 
 ## Google Apps Script
@@ -158,7 +159,7 @@ break them. Single flow: `locationSlug`/`location`, `bookingDate`/`date`,
 `selectPackage{Joy,Fun,Max}`, `packageSection`, `addonsSection`, `contactSection`,
 `customerName`/`Phone`/`Email`, `referralCode`, `reviewSection`, `review*` fields,
 `createBookingBtn`, `confirmBookingBtn` (typo alias `confitmBookingBtn` intentionally
-also accepted). Group flow uses the `group*` equivalents, plus `groupReferralCode`. The marketing-consent checkbox (`marketingConsent` / `groupMarketingConsent`) is injected by the scripts just above the Review button — no Webflow markup needed; it's sent as `marketing_consent`, stored on the booking, and (when ticked) pushes the customer to Mailchimp via `mailchimp_subscribe`.
+also accepted). Group flow uses the `group*` equivalents, plus `groupReferralCode`. Add-ons whose slug starts with `mahjong-` (Haymarket: `mahjong-single` $15, `mahjong-twin` $24 per room per hour) render as a mahjong card: start time, hours and rooms, offering only as many rooms as the Cityheroes mahjong `GetAvailability` shows free for that window; qty = rooms × hours. The marketing-consent checkbox (`marketingConsent` / `groupMarketingConsent`) is injected by the scripts just above the Review button — no Webflow markup needed; it's sent as `marketing_consent`, stored on the booking, and (when ticked) pushes the customer to Mailchimp via `mailchimp_subscribe`.
 Buttons can also be targeted with `data-koko-*` attributes; a missing required section
 shows a visible message instead of failing silently.
 

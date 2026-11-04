@@ -256,6 +256,13 @@ query StripeWebhook verb=POST {
                   }
                 } as $Booking
               
+                // Hold any mahjong rooms this booking added in the Cityheroes
+                // mahjong system, now that it's paid. Never blocks the
+                // webhook: failures are noted on the booking and emailed.
+                function.run reserve_mahjong_rooms {
+                  input = {booking_id: $Booking.id}
+                } as $MahjongHold
+              
                 // ---- Finalise this booking's own $30 discount (if any) ----
                 // Only now, on a confirmed payment, do we actually consume
                 // a pre-existing credit or hand the referrer their reward —

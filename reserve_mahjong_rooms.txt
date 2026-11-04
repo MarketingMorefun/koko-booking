@@ -1,0 +1,271 @@
+function reserve_mahjong_rooms {
+  input {
+    int booking_id
+  }
+
+  stack {
+    // Holds the mahjong rooms a group booking added (add-on option
+    // "mj|type=twin|rooms=1|hours=2|start=<ms>") in the Cityheroes mahjong
+    // system, via its PartnerHoldCreate endpoint. Called from StripeWebhook
+    // once the deposit is paid; safe to call again (skips bookings that
+    // already have mahjong_hold_ids). Any room that can't be held is written
+    // into the booking notes and emailed to marketing so staff can sort it.
+    var $held {
+      value = []
+    }
+  
+    var $held_text {
+      value = []
+    }
+  
+    var $errors {
+      value = []
+    }
+  
+    db.get bookings {
+      field_name = "id"
+      field_value = $input.booking_id
+    } as $B
+  
+    conditional {
+      if ($B != null && ($B.mahjong_hold_ids|first_notnull:"") == "") {
+        db.query partner_keys {
+          where = $db.partner_keys.name == "cityheroes_mahjong"
+          return = {type: "single"}
+        } as $Key
+      
+        // KOKO location id -> Cityheroes mahjong venue slug
+        var $venue {
+          value = ""
+        }
+      
+        conditional {
+          if ($B.location_id == 6) {
+            var $venue {
+              value = "haymarket"
+            }
+          }
+        
+          elseif ($B.location_id == 3) {
+            var $venue {
+              value = "burwood"
+            }
+          }
+        
+          elseif ($B.location_id == 11) {
+            var $venue {
+              value = "hornsby"
+            }
+          }
+        }
+      
+        foreach ($B.addons_json|first_notnull:[]) {
+          each as $a {
+            var $opt {
+              value = $a|get:"option":""|first_notnull:""
+            }
+          
+            conditional {
+              if ($opt|starts_with:"mj|") {
+                var $o {
+                  value = {}
+                }
+              
+                foreach ($opt|split:"|") {
+                  each as $part {
+                    var $kv {
+                      value = $part|split:"="
+                    }
+                  
+                    conditional {
+                      if (($kv|count) == 2) {
+                        var $o {
+                          value = $o|set:($kv|first):($kv|last)
+                        }
+                      }
+                    }
+                  }
+                }
+              
+                var $start_ts {
+                  value = $o|get:"start":"0"|to_int
+                }
+              
+                var $end_ts {
+                  value = $start_ts + (($o|get:"hours":"0"|to_int) * 3600000)
+                }
+              
+                conditional {
+                  if ($venue == "") {
+                    var $errors {
+                      value = $errors
+                        |push:("Mahjong rooms can't be held for this venue: "
+                          |concat:($a|get:"option_label":""):""
+                        )
+                    }
+                  }
+                
+                  else {
+                    // Plain variables only inside params: filter chains in
+                    // an object literal there get mis-parsed by Xano.
+                    var $room_type {
+                      value = $o|get:"type":""
+                    }
+                  
+                    var $rooms_n {
+                      value = $o|get:"rooms":"0"|to_int
+                    }
+                  
+                    var $hold_name {
+                      value = "KOKO group #"
+                        |concat:($B.id|to_text):""
+                        |concat:" · ":""
+                        |concat:($B.customer_name|first_notnull:""):""
+                    }
+                  
+                    var $hold_phone {
+                      value = $B.customer_phone|first_notnull:""|to_text
+                    }
+                  
+                    var $hold_notes {
+                      value = "KOKO booking #"
+                        |concat:($B.id|to_text):""
+                        |concat:" (deposit paid). ":""
+                        |concat:($a|get:"option_label":""):""
+                    }
+                  
+                    api.request {
+                      url = "https://x8ki-letl-twmt.n7.xano.io/api:Eq8OZnxt/PartnerHoldCreate"
+                      method = "POST"
+                      params = {
+                        payload: {
+                          secret        : $Key.secret
+                          venue         : $venue
+                          start_ts      : $start_ts
+                          end_ts        : $end_ts
+                          room_type     : $room_type
+                          rooms         : $rooms_n
+                          customer_name : $hold_name
+                          customer_phone: $hold_phone
+                          booking_notes : $hold_notes
+                        }
+                      }
+                    
+                      headers = []
+                        |push:"Content-Type: application/json"
+                    } as $Hold
+                  
+                    var $hold_id {
+                      value = $Hold.response.result|get:"booking_id":null
+                    }
+                  
+                    conditional {
+                      if ($hold_id != null) {
+                        var $held {
+                          value = $held|push:($hold_id|to_text)
+                        }
+                      
+                        var $held_text {
+                          value = $held_text
+                            |push:(($a|get:"option_label":"")
+                              |concat:" → ":""
+                              |concat:($Hold.response.result|get:"room_names":[]|join:", "):""
+                            )
+                        }
+                      }
+                    
+                      else {
+                        var $errors {
+                          value = $errors
+                            |push:(($a|get:"option_label":"")
+                              |concat:": ":""
+                              |concat:($Hold.response.result
+                                |get:"error_message":("HTTP "
+                                  |concat:($Hold.response.status|to_text):""
+                                  |concat:" ":""
+                                  |concat:($Hold.response.result|json_encode):""
+                                )
+                              ):""
+                            )
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      
+        conditional {
+          if (($held|count) > 0 || ($errors|count) > 0) {
+            var $note_add {
+              value = ""
+            }
+          
+            conditional {
+              if (($held|count) > 0) {
+                var $note_add {
+                  value = " | MAHJONG ROOMS HELD: "|concat:($held_text|join:"; "):""
+                }
+              }
+            }
+          
+            conditional {
+              if (($errors|count) > 0) {
+                var $note_add {
+                  value = $note_add
+                    |concat:" | MAHJONG HOLD FAILED, please arrange manually: ":""
+                    |concat:($errors|join:"; "):""
+                }
+              }
+            }
+          
+            var $hold_ids_text {
+              value = "failed"
+            }
+          
+            conditional {
+              if (($held|count) > 0) {
+                var $hold_ids_text {
+                  value = $held|join:","
+                }
+              }
+            }
+          
+            db.patch bookings {
+              field_name = "id"
+              field_value = $B.id
+              data = {
+                mahjong_hold_ids: $hold_ids_text
+                booking_notes   : ($B.booking_notes|first_notnull:"")|concat:$note_add:""
+              }
+            } as $Patched
+          }
+        }
+      
+        conditional {
+          if (($errors|count) > 0) {
+            api.request {
+              url = "https://api.resend.com/emails"
+              method = "POST"
+              params = ```
+                {
+                  from   : "KOKO Amusement <booking@mail.morefun.com.au>"
+                  to     : "marketing@kokoamusement.com.au"
+                  subject: "[ACTION NEEDED] Mahjong rooms not held for KOKO booking #"|concat:($B.id|to_text):""
+                  text   : "Booking #"|concat:($B.id|to_text):""|concat:" (":""|concat:($B.customer_name|first_notnull:""):""|concat:", ":""|concat:($B.date|first_notnull:""):""|concat:") paid its deposit, but these mahjong rooms could not be held automatically:\n\n":""|concat:($errors|join:"\n"):""|concat:"\n\nPlease hold them on the store-holds page or contact the customer.":""
+                }
+                ```
+              headers = []
+                |push:("Authorization: Bearer "|concat:$env.RESEND_API_KEY:"")
+                |push:"Content-Type: application/json"
+            } as $Alert
+          }
+        }
+      }
+    }
+  }
+
+  response = {held: $held, errors: $errors}
+}
