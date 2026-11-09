@@ -5,7 +5,8 @@
  *  - find a booking (name, email, phone, #ID, child's name, referral code),
  *    filter by venue / status / type / date
  *  - change date, time, venue, room, guests, package, contact + party details,
- *    notes, money fields (with "Recalculate price" from the live Quote)
+ *    notes, add-ons (tap-to-add buttons, totals update themselves), money
+ *    fields (with "Recalculate price" from the live Quote)
  *  - cancel, resend the confirmation email, copy an unpaid booking's payment link
  *  - every save is written to the booking's admin_log (who + what changed)
  *
@@ -221,8 +222,26 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
 .kka-kv dt{color:var(--mute)}\
 .kka-kv dd{margin:0;font-weight:700;word-break:break-word}\
 .kka-log{white-space:pre-wrap;font-size:12px;background:var(--soft);border-radius:10px;padding:10px;max-height:180px;overflow:auto}\
-.kka-addons{display:grid;gap:6px;font-size:13px}\
-.kka-addons div{display:flex;justify-content:space-between;gap:10px;border-bottom:1px dashed var(--line);padding-bottom:6px}\
+.kka-addons{display:grid;gap:8px;font-size:13px}\
+.kka-ad{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:8px 10px;border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:#fff}\
+.kka-ad-ctl{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px}\
+.kka-ad.new{border-color:var(--accent);background:#FFF9EC}\
+.kka-ad-name{min-width:0;font-weight:800}\
+.kka-ad-name small{display:block;font-weight:600;color:var(--mute)}\
+.kka-ad select{border:2px solid var(--line);border-radius:10px;padding:6px 8px;background:#fff;max-width:100%;height:36px}\
+.kka-step{display:inline-flex;align-items:center;border:2px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}\
+.kka-step button{border:0;background:var(--soft);width:32px;height:32px;font-size:18px;font-weight:800;cursor:pointer;color:var(--ink)}\
+.kka-step button:hover{background:var(--yellow)}\
+.kka-step input{width:46px;border:0;text-align:center;font-weight:800;font-size:14px;padding:0;-moz-appearance:textfield}\
+.kka-step input::-webkit-inner-spin-button{-webkit-appearance:none}\
+.kka-ad-total{min-width:70px;text-align:right;font-weight:800}\
+.kka-ad-del{border:0;background:transparent;color:var(--red);font-size:16px;cursor:pointer;padding:4px 6px;border-radius:8px}\
+.kka-ad-del:hover{background:#fbeaea}\
+.kka-adpick{display:flex;flex-wrap:wrap;gap:8px}\
+.kka-adbtn{display:inline-flex;align-items:center;gap:6px;border:2px dashed var(--ink2);background:#fff;border-radius:12px;padding:7px 12px;font-weight:800;font-size:13px;cursor:pointer;color:var(--ink)}\
+.kka-adbtn:hover{background:var(--yellow);border-style:solid}\
+.kka-adbtn span{font-weight:600;color:var(--mute)}\
+.kka-adsum{display:flex;justify-content:space-between;font-weight:800;border-top:1px dashed var(--line);padding-top:8px}\
 .kka-toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink2);color:#fff;padding:12px 18px;border-radius:12px;font-weight:700;z-index:10000;max-width:calc(100% - 32px);box-shadow:0 8px 24px rgba(0,0,0,.2)}\
 .kka-toast.bad{background:var(--red)}\
 @media (max-width:640px){\
@@ -429,7 +448,6 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
       return Number(p.id) === Number(b.package_id) || (p.is_active && (isParty ? p.Category === "birthday_party" : p.Category !== "birthday_party"));
     }).map(function (p) { return '<option value="' + p.id + '">' + esc(p.Name) + "</option>"; }).join("");
     var statusOpts = STATUS_ORDER.map(function (k) { return '<option value="' + k + '">' + esc(STATUS[k].label) + "</option>"; }).join("");
-    var ad = addons(b);
 
     var shade = document.createElement("div"); shade.className = "kka-shade";
     var dr = document.createElement("aside"); dr.className = "kka kka-drawer"; dr.setAttribute("role", "dialog"); dr.setAttribute("aria-label", "Booking #" + b.id);
@@ -465,12 +483,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
       '<div class="kka-full">' + fld("booking_notes", "Notes", "<textarea></textarea>") + "</div>" +
       "</div></section>" +
 
-      '<section class="kka-sec"><h3>Add-ons</h3>' +
-      (ad.length ? '<div class="kka-addons">' + ad.map(function (a) {
-        return "<div><span>" + esc(a.addon_name || ("Add-on #" + a.addon_id)) + (a.option_label ? " · " + esc(a.option_label) : "") + " × " + esc(a.qty) +
-          (a.allergy_note ? ' <span class="kka-note">(' + esc(a.allergy_note) + ")</span>" : "") + "</span><b>" + (a.line_total_cents != null ? money(a.line_total_cents) : "") + "</b></div>";
-      }).join("") + "</div>" : '<div class="kka-note">None</div>') +
-      '<div class="kka-note">To change add-ons, put the change in Notes and adjust the totals below.</div></section>' +
+      '<section class="kka-sec"><h3>Add-ons</h3><div data-slot="addons"></div></section>' +
 
       '<section class="kka-sec"><h3>Money</h3><div class="kka-grid3">' +
       fld("package_total_cents", "Package $", '<input inputmode="decimal">') +
@@ -518,6 +531,10 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
     ["date", "start", "end", "guests", "package_id", "customer_name", "customer_phone", "customer_email",
       "birthday_child_name", "birthday_child_gender", "average_age", "booking_notes", "status"].forEach(function (k) { setVal(k, orig[k]); });
     ["package_total_cents", "addons_total_cents", "grand_total_cents", "deposit_paid_cents", "balance_due_cents"].forEach(function (k) { setVal(k, centsToInput(orig[k])); });
+    S.ad = addons(b).map(function (a) { return Object.assign({}, a); });
+    S.adOrig = adKey(S.ad);
+    orig.addons = adSummary(S.ad);
+    renderAddons();
 
     shade.onclick = tryClose;
     dr.addEventListener("click", function (e) {
@@ -530,12 +547,23 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
       else if (act === "cancel") cancelBooking(b);
       else if (act === "quote") recalc(b);
       else if (act === "balance") recalcBalance(b);
+      else if (act === "ad-add") addAddon(Number(a.getAttribute("data-id")));
+      else if (act === "ad-inc" || act === "ad-dec") stepAddon(Number(a.getAttribute("data-i")), act === "ad-inc" ? 1 : -1);
+      else if (act === "ad-del") { S.ad.splice(Number(a.getAttribute("data-i")), 1); addonsChanged(); }
     });
     var lastStart = orig.start;
     dr.addEventListener("input", onEdit);
     dr.addEventListener("change", function (e) {
       var f = fieldOf(e.target);
       if (f === "location_id" && isParty) fillRooms(getVal("location_id"), null);
+      if (f === "location_id") renderAddons();
+      if (f === "guests" && S.ad.some(function (x) { return x.unit_type === "per_person"; })) addonsChanged();
+      var ai = e.target.getAttribute("data-ad-qty"), ao = e.target.getAttribute("data-ad-opt");
+      if (ai != null) { S.ad[+ai].qty = Math.max(1, Math.round(Number(e.target.value) || 1)); addonsChanged(); }
+      if (ao != null) {
+        var line = S.ad[+ao], o = e.target.options[e.target.selectedIndex];
+        line.option = o.value; line.option_label = o.textContent; addonsChanged();
+      }
       if (f === "start" && lastStart && getVal("end") && getVal("start")) {
         // keep the party length when the start time moves
         var delta = toMin(getVal("start")) - toMin(lastStart);
@@ -587,7 +615,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
     location_id: "Venue", party_room_id: "Room", date: "Date", start: "Start", end: "End", guests: "Guests", package_id: "Package",
     customer_name: "Name", customer_phone: "Phone", customer_email: "Email", birthday_child_name: "Child", birthday_child_gender: "Gender",
     average_age: "Avg age", booking_notes: "Notes", status: "Status", package_total_cents: "Package price", addons_total_cents: "Add-ons price",
-    grand_total_cents: "Total", deposit_paid_cents: "Paid", balance_due_cents: "Balance"
+    grand_total_cents: "Total", deposit_paid_cents: "Paid", balance_due_cents: "Balance", addons: "Add-ons"
   };
   var MONEY = { package_total_cents: 1, addons_total_cents: 1, grand_total_cents: 1, deposit_paid_cents: 1, balance_due_cents: 1 };
 
@@ -602,6 +630,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
         if (c !== Number(o[k] || 0)) out[k] = c;
       } else if (String(v).trim() !== String(o[k]).trim()) out[k] = String(v).trim();
     });
+    if (S.ad && adKey(S.ad) !== S.adOrig) out.addons = adSummary(S.ad);
     return out;
   }
 
@@ -611,6 +640,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
     if (k === "party_room_id") return roomName(v) || "—";
     if (k === "package_id") return pkgName(v);
     if (k === "status") return (STATUS[v] || {}).label || v;
+    if (k === "addons") return v || "none";
     if (k === "booking_notes") return v ? "“" + (v.length > 40 ? v.slice(0, 40) + "…" : v) + "”" : "(empty)";
     return v === "" ? "(empty)" : v;
   }
@@ -629,7 +659,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
     btn.textContent = n ? "Save " + n + " change" + (n === 1 ? "" : "s") : "Save changes";
 
     // offer to email the customer when something they'd care about changed
-    var b = S.open, ask = ACTIVE[(ch.status || b.status)] && ["location_id", "party_room_id", "date", "start", "end", "guests", "package_id", "grand_total_cents", "balance_due_cents"].some(function (k) { return k in ch; });
+    var b = S.open, ask = ACTIVE[(ch.status || b.status)] && ["location_id", "party_room_id", "date", "start", "end", "guests", "package_id", "grand_total_cents", "balance_due_cents", "addons"].some(function (k) { return k in ch; });
     var opt = S.drawer.querySelector('[data-slot="emailopt"]');
     opt.style.display = ask ? "" : "none";
     if (!ask) el("email_after").checked = false;
@@ -702,6 +732,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
       if (k in ch) { if (ch[k] === "") clear.push(k); else body[k] = ch[k]; }
     });
     Object.keys(MONEY).forEach(function (k) { if (k in ch) body[k] = ch[k]; });
+    if ("addons" in ch) body.addons_json = JSON.stringify(S.ad.map(function (x) { x.line_total_cents = adLineTotal(x); return x; }));
     if (clear.length) body.clear = clear.join(",");
     body.log_line = (S.staff ? "[" + S.staff + "] " : "") + log.join("; ");
 
@@ -770,17 +801,125 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
     var loc = byId(S.data.locations, getVal("location_id"));
     var body = { payload: {
       location_slug: loc ? loc.slug : "", package_id: Number(getVal("package_id")), guests: Number(getVal("guests")),
-      addons: addons(b).map(function (a) { return { addon_id: Number(a.addon_id), qty: Number(a.qty || 0) }; })
+      addons: S.ad.map(function (a) { return { addon_id: Number(a.addon_id), qty: Number(a.qty || 0) }; })
     } };
     try {
       var q = await post("Quote", body);
       if (q.error_message) throw new Error(q.error_message);
       setVal("package_total_cents", centsToInput(q.package_total_cents));
-      setVal("addons_total_cents", centsToInput(q.addons_total_cents));
-      setVal("grand_total_cents", centsToInput(q.grand_total_cents));
-      recalcBalance(b, true);
+      // add-ons back to today's venue price (the quote uses the same list)
+      var cat = adCatalog();
+      S.ad.forEach(function (x) {
+        var c = cat.filter(function (d) { return d.id === Number(x.addon_id); })[0];
+        if (c) x.unit_price_cents = c.price;
+      });
+      addonsChanged();
       toast("Price updated from today's price list — check it, then Save.");
     } catch (e) { toast("Couldn't get a price: " + e.message, true); }
+  }
+
+  // ---------- add-ons ----------
+  var UNIT = { per_person: "per guest", per_hour: "per hour", per_table: "per table", per_card: "per card", per_room: "per room", per_item: "each" };
+
+  function adRules(a) {
+    var r = a && a.rules_json;
+    if (!r) return {};
+    if (typeof r === "string") { try { return JSON.parse(r); } catch (_) { return {}; } }
+    if (Array.isArray(r.options)) return r;
+    if (typeof r.rules_json === "string" && r.rules_json.trim()) { try { return JSON.parse(r.rules_json); } catch (_) {} }
+    return r;
+  }
+  function adOptions(def) {
+    return (adRules(def).options || []).filter(function (o) { return o && o.is_active !== false; });
+  }
+  // What this venue sells, at this venue's price.
+  function adCatalog() {
+    var loc = Number(getVal("location_id") || (S.open && S.open.location_id));
+    var isParty = S.open && S.open.booking_type === "birthday_party";
+    var defs = S.data.addons || [];
+    return (S.data.location_addons || []).filter(function (la) {
+      return Number(la.location_id) === loc && la.is_active;
+    }).map(function (la) {
+      var d = byId(defs, la.addon_id);
+      if (!d || !d.is_active) return null;
+      if (d.booking_type === "birthday_party" && !isParty) return null;
+      if (d.booking_type === "group" && isParty) return null;
+      var price = Number(la.default_price_cents || 0) || Math.round(Number(la.price || 0) * 100);
+      return { id: Number(d.id), name: d.name, slug: d.slug || "", unit: d.unit_type || "per_item", price: price, options: adOptions(d) };
+    }).filter(Boolean);
+  }
+  function adLineTotal(x) {
+    var unit = Number(x.unit_price_cents || 0);
+    return x.unit_type === "per_person" ? unit * (Number(getVal("guests")) || Number(S.open.guests) || 0) : unit * Math.max(1, Number(x.qty) || 1);
+  }
+  function adKey(list) {
+    return JSON.stringify(list.map(function (x) { return [Number(x.addon_id), Number(x.qty) || 0, x.option || "", Number(x.unit_price_cents) || 0]; }));
+  }
+  function adSummary(list) {
+    return list.map(function (x) {
+      return (x.addon_name || "Add-on #" + x.addon_id) + (x.option_label ? " (" + x.option_label + ")" : "") + (x.unit_type === "per_person" ? "" : " ×" + (x.qty || 1));
+    }).join(", ");
+  }
+
+  function renderAddons() {
+    var slot = S.drawer && S.drawer.querySelector('[data-slot="addons"]');
+    if (!slot) return;
+    var cat = adCatalog(), was = JSON.parse(S.adOrig || "[]");
+    var rows = S.ad.map(function (x, i) {
+      var def = byId(S.data.addons || [], x.addon_id), opts = adOptions(def);
+      var isNew = !was.some(function (w) { return w[0] === Number(x.addon_id) && w[1] === (Number(x.qty) || 0) && w[2] === (x.option || ""); });
+      var optSel = opts.length ? '<select data-ad-opt="' + i + '" aria-label="Option">' +
+        (x.option && !opts.some(function (o) { return o.value === x.option; }) ? '<option value="' + esc(x.option) + '">' + esc(x.option_label || x.option) + "</option>" : "") +
+        opts.map(function (o) { return '<option value="' + esc(o.value) + '"' + (o.value === x.option ? " selected" : "") + ">" + esc(o.label) + "</option>"; }).join("") + "</select>" : "";
+      var qty = x.unit_type === "per_person"
+        ? '<span class="kka-note">× ' + esc(getVal("guests") || S.open.guests || 0) + " guests</span>"
+        : '<span class="kka-step"><button type="button" data-act="ad-dec" data-i="' + i + '" aria-label="One less">−</button>' +
+          '<input type="number" min="1" step="1" inputmode="numeric" data-ad-qty="' + i + '" value="' + esc(x.qty || 1) + '" aria-label="Quantity">' +
+          '<button type="button" data-act="ad-inc" data-i="' + i + '" aria-label="One more">+</button></span>';
+      var mj = /mahjong/i.test((def && def.slug) || x.addon_name || "")
+        ? '<div class="kka-note" style="grid-column:1/-1">Changing this here doesn\'t book or move the CityHeroes mahjong room — do that in the mahjong system.</div>' : "";
+      return '<div class="kka-ad' + (isNew ? " new" : "") + '"><div class="kka-ad-name">' + esc(x.addon_name || "Add-on #" + x.addon_id) +
+        "<small>" + money(x.unit_price_cents) + " " + esc(UNIT[x.unit_type] || "") + (!opts.length && x.option_label ? " · " + esc(x.option_label) : "") + (x.allergy_note ? " · " + esc(x.allergy_note) : "") + "</small></div>" +
+        '<span class="kka-ad-total">' + money(adLineTotal(x)) + "</span>" +
+        '<button type="button" class="kka-ad-del" data-act="ad-del" data-i="' + i + '" aria-label="Remove ' + esc(x.addon_name || "") + '">✕</button>' +
+        '<div class="kka-ad-ctl">' + optSel + qty + "</div>" + mj + "</div>";
+    }).join("");
+    var total = S.ad.reduce(function (t, x) { return t + adLineTotal(x); }, 0);
+    slot.innerHTML =
+      (S.ad.length ? '<div class="kka-addons">' + rows + '<div class="kka-adsum"><span>Add-ons total</span><span>' + money(total) + "</span></div></div>"
+        : '<div class="kka-note">No add-ons yet.</div>') +
+      '<div style="margin-top:12px"><div class="kka-note" style="margin-bottom:6px">Tap to add</div><div class="kka-adpick">' +
+      (cat.length ? cat.map(function (c) {
+        return '<button type="button" class="kka-adbtn" data-act="ad-add" data-id="' + c.id + '">+ ' + esc(c.name) + " <span>" + money(c.price) + (c.unit === "per_item" ? "" : " " + esc(UNIT[c.unit] || "")) + "</span></button>";
+      }).join("") : '<span class="kka-note">This venue has no add-ons set up.</span>') +
+      "</div></div>";
+  }
+
+  function addAddon(id) {
+    var c = adCatalog().filter(function (d) { return d.id === id; })[0];
+    if (!c) return;
+    // same add-on without a choice to make → just one more
+    var same = !c.options.length && S.ad.filter(function (x) { return Number(x.addon_id) === id; })[0];
+    if (same && c.unit !== "per_person") same.qty = (Number(same.qty) || 1) + 1;
+    else if (!same) {
+      var o = c.options[0];
+      S.ad.push({ addon_id: id, addon_name: c.name, qty: 1, unit_type: c.unit, unit_price_cents: c.price, line_total_cents: 0,
+        option: o ? o.value : null, option_label: o ? o.label : null, allergy_note: null });
+    }
+    addonsChanged();
+  }
+  function stepAddon(i, d) {
+    var x = S.ad[i]; if (!x) return;
+    x.qty = Math.max(1, (Number(x.qty) || 1) + d);
+    addonsChanged();
+  }
+  // Add-on list changed → redraw it and roll the new add-on price into the totals.
+  function addonsChanged() {
+    renderAddons();
+    var adTotal = S.ad.reduce(function (t, x) { return t + adLineTotal(x); }, 0);
+    setVal("addons_total_cents", centsToInput(adTotal));
+    setVal("grand_total_cents", centsToInput((toCents(getVal("package_total_cents")) || 0) + adTotal));
+    recalcBalance(S.open, true);
   }
 
   function recalcBalance(b, quiet) {

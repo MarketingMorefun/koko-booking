@@ -1,5 +1,5 @@
 // Staff admin page (koko-admin.html) — loads every booking plus the
-// locations / rooms / packages needed to show and edit them. Contains all
+// locations / rooms / packages / add-on price lists needed to show and edit them. Contains all
 // customer PII, so it's locked behind the ADMIN_KEY workspace variable
 // (Settings → Workspace Variables). Unset = every call is refused.
 // POST (not GET) so the key never ends up in a URL / server log.
@@ -31,6 +31,14 @@ query AdminBookings verb=POST {
       value = []
     }
   
+    var $Addons {
+      value = []
+    }
+  
+    var $LocationAddons {
+      value = []
+    }
+  
     conditional {
       if ($input.key == null || $input.key == "" || $input.key != $env.ADMIN_KEY) {
         var $error_message {
@@ -54,6 +62,14 @@ query AdminBookings verb=POST {
         db.query Packages {
           return = {type: "list"}
         } as $Packages
+      
+        db.query Addons {
+          return = {type: "list"}
+        } as $Addons
+      
+        db.query location_addons {
+          return = {type: "list"}
+        } as $LocationAddons
       }
     }
   }
@@ -63,6 +79,8 @@ query AdminBookings verb=POST {
     bookings     : $Bookings
     locations    : $Locations
     rooms        : $Rooms
-    packages     : $Packages
+    packages       : $Packages
+    addons         : $Addons
+    location_addons: $LocationAddons
   }
 }

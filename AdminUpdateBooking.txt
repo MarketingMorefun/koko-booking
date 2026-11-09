@@ -33,6 +33,10 @@ query AdminUpdateBooking verb=POST {
     text customer_phone?
     text log_line?
   
+    // The booking's whole add-on list as a JSON string (same shape as
+    // CreateBooking writes). Sent only when staff changed the add-ons.
+    text addons_json?
+  
     // Comma list of text fields to blank out (an empty string input arrives
     // as null, i.e. "leave as is"), e.g. "booking_notes,average_age"
     text clear?
@@ -216,6 +220,15 @@ query AdminUpdateBooking verb=POST {
             var $data {
               value = $data
                 |set:"booking_notes":$input.booking_notes
+            }
+          }
+        }
+      
+        conditional {
+          if ($input.addons_json != null) {
+            var $data {
+              value = $data
+                |set:"addons_json":($input.addons_json|json_decode)
             }
           }
         }
