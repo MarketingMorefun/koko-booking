@@ -5,8 +5,8 @@
  *  - find a booking (name, email, phone, #ID, child's name, referral code),
  *    filter by venue / status / type / date
  *  - change date, time, venue, room, guests, package, contact + party details,
- *    notes, add-ons (tap-to-add buttons, totals update themselves), money
- *    fields (with "Recalculate price" from the live Quote)
+ *    notes, add-ons (tap-to-add buttons), money — total, balance and (for
+ *    parties) the package price from the live Quote all work themselves out
  *  - cancel, resend the confirmation email, copy an unpaid booking's payment link
  *  - every save is written to the booking's admin_log (who + what changed)
  *
@@ -493,8 +493,9 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
       fld("deposit_paid_cents", "Paid so far $", '<input inputmode="decimal">') +
       fld("balance_due_cents", "Balance due $", '<input inputmode="decimal">') +
       "</div>" +
-      '<div class="kka-actions">' + (isParty ? '<button class="kka-btn sm" data-act="quote" type="button">Recalculate price</button>' : "") +
-      '<button class="kka-btn sm" data-act="balance" type="button">Balance = total − discount − paid</button></div>' +
+      '<div class="kka-note">Works itself out: Total = package + add-ons · Balance = total − discount − paid.' +
+      (isParty ? " Changing the package, guests or venue fills in the package price from today's price list." : "") +
+      " You can still type over any number.</div>" +
       '<div class="kka-note">Changing money here doesn\'t charge or refund the card — do refunds in Stripe.</div></section>' +
 
       '<section class="kka-sec"><h3>Status</h3><div class="kka-grid">' + fld("status", "Status", "<select>" + statusOpts + "</select>") + "</div></section>" +
@@ -545,14 +546,21 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
       else if (act === "resend") resend(b);
       else if (act === "paylink") copyPayLink(b);
       else if (act === "cancel") cancelBooking(b);
-      else if (act === "quote") recalc(b);
-      else if (act === "balance") recalcBalance(b);
       else if (act === "ad-add") addAddon(Number(a.getAttribute("data-id")));
       else if (act === "ad-inc" || act === "ad-dec") stepAddon(Number(a.getAttribute("data-i")), act === "ad-inc" ? 1 : -1);
       else if (act === "ad-del") { S.ad.splice(Number(a.getAttribute("data-i")), 1); addonsChanged(); }
     });
     var lastStart = orig.start;
-    dr.addEventListener("input", onEdit);
+    dr.addEventListener("input", function (e) {
+      var f = fieldOf(e.target);
+      // typed a money figure → the ones that depend on it follow
+      if (f === "package_total_cents" || f === "addons_total_cents") {
+        var p = toCents(getVal("package_total_cents")), a = toCents(getVal("addons_total_cents"));
+        if (!isNaN(p) && !isNaN(a)) setVal("grand_total_cents", centsToInput((p || 0) + (a || 0)));
+      }
+      if (f === "package_total_cents" || f === "addons_total_cents" || f === "grand_total_cents" || f === "deposit_paid_cents") recalcBalance(b, true);
+      else onEdit();
+    });
     dr.addEventListener("change", function (e) {
       var f = fieldOf(e.target);
       if (f === "location_id" && isParty) fillRooms(getVal("location_id"), null);
@@ -570,6 +578,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
         setVal("end", fromMin(toMin(getVal("end")) + delta));
       }
       if (f === "start") lastStart = getVal("start");
+      if (isParty && (f === "package_id" || f === "guests" || f === "location_id")) recalc(b);
       onEdit();
     });
     document.addEventListener("keydown", escClose);
@@ -798,6 +807,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
   }
 
   async function recalc(b) {
+    var my = S.quoteSeq = (S.quoteSeq || 0) + 1;
     var loc = byId(S.data.locations, getVal("location_id"));
     var body = { payload: {
       location_slug: loc ? loc.slug : "", package_id: Number(getVal("package_id")), guests: Number(getVal("guests")),
@@ -805,6 +815,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
     } };
     try {
       var q = await post("Quote", body);
+      if (my !== S.quoteSeq || S.open !== b) return; // a newer change already asked
       if (q.error_message) throw new Error(q.error_message);
       setVal("package_total_cents", centsToInput(q.package_total_cents));
       // add-ons back to today's venue price (the quote uses the same list)
@@ -814,7 +825,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
         if (c) x.unit_price_cents = c.price;
       });
       addonsChanged();
-      toast("Price updated from today's price list — check it, then Save.");
+      toast("Package price " + money(q.package_total_cents) + " from today's price list — check, then Save.");
     } catch (e) { toast("Couldn't get a price: " + e.message, true); }
   }
 
@@ -924,7 +935,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
 
   function recalcBalance(b, quiet) {
     var total = toCents(getVal("grand_total_cents")) || 0, paid = toCents(getVal("deposit_paid_cents")) || 0;
-    setVal("balance_due_cents", centsToInput(Math.max(0, total - Number(b.discount_cents || 0) - paid)));
+    if (!isNaN(total) && !isNaN(paid)) setVal("balance_due_cents", centsToInput(Math.max(0, total - Number(b.discount_cents || 0) - paid)));
     onEdit();
   }
 
