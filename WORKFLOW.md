@@ -32,11 +32,12 @@
 - 成功页会用 `VerifyBookingConversion` 确认确实付了钱，再计一次转化。
 
 ### 3. 付款成功（`StripeWebhook`）
+Webhook 先验证 Stripe 签名，再向 Stripe 重新读取这次付款，核对订单号、币种和每一项金额。金额对不上的不会自动确认，而是标记成「待人工核查」（`payment_review_reason`）。核对通过后：
 1. 订单状态改为 `deposit_paid`（付清的改为余额 0）。
 2. 生成这笔订单的 `referral_code`。
 3. 结算预留的折扣：标记为已用，或者给推荐人发 $30 抵扣。
 4. 给这位客户再发一张 $30 抵扣，下次可用。
-5. 发确认邮件（见「三、邮件」）。
+5. 发确认邮件（见「三、邮件」）。发送失败会每 5 分钟自动重试，最多 5 次（`booking_reliability_worker`，随 `RunReminders` 一起运行）。
 6. 团体订单有麻将加购的，调用 `reserve_mahjong_rooms`，在 Cityheroes 麻将系统里占房。
 
 Stripe 发来 `checkout.session.expired` 时，只要订单还没付钱，就改为 `expired`。
@@ -107,7 +108,7 @@ cancelled / refunded   员工在后台操作
 | # | 邮件 | 什么时候发 | 标题 | 在哪里改 |
 |---|---|---|---|---|
 | 1 | **确认邮件** | Stripe 付款成功时 | 生日单：`{孩子名}'s KOKO Birthday Party Confirmed #ID`<br>其他：`KOKO Booking Deposit Confirmation #ID`<br>付清的单标题里去掉 "Deposit" | [StripeWebhook.txt](StripeWebhook.txt) |
-| 2 | **重发确认邮件** | 员工在后台点「Resend confirmation email」 | 和第 1 封一样 | [ResendConfirmationEmail.txt](ResendConfirmationEmail.txt) |
+| 2 | **重发确认邮件** | 员工在后台点「Resend confirmation email」（需要员工密钥） | 和第 1 封一样 | [ResendConfirmationEmail.txt](ResendConfirmationEmail.txt) |
 | 3 | **提醒 1**（弃单） | 订单生成 15 分钟以上、客户已离开页面 15 分钟、仍未付款 | `Your KOKO booking isn't confirmed yet (#ID)` | [RunReminders.txt](RunReminders.txt) |
 | 4 | **提醒 2**（最后机会） | 订单生成 20 小时、仍未付款 | `Last chance — your KOKO booking expires in 4 hours` | [RunReminders.txt](RunReminders.txt) |
 | 5 | 推荐码补发 | 一次性任务，已经跑完，现在会拒绝所有调用 | `You've got a $30 referral code from KOKO Amusement` | [BackfillReferralCodesAndCredits.txt](BackfillReferralCodesAndCredits.txt) |
@@ -141,6 +142,8 @@ cancelled / refunded   员工在后台操作
 | Burwood | kokoburwoodpackage@gmail.com |
 
 ### C. 内部警报
+- **`[ACTION NEEDED] Booking payment review #ID`**：付款金额或付款链接和订单对不上，需要人工核查。
+- **`[ACTION NEEDED] Booking confirmation failed #ID`**：确认邮件退信、投递失败，或者重试 3 次以上仍然失败，需要员工核对客户邮箱后重发。
 - **`[ACTION NEEDED] Mahjong rooms not held for KOKO booking #ID`**：团体单已经付款，但在 Cityheroes 占麻将房失败了。这封邮件由 Resend 发到 `marketing@kokoamusement.com.au`，需要人工去补占房。来源是 [reserve_mahjong_rooms.txt](reserve_mahjong_rooms.txt)。
 
 ### 目前客户收不到的邮件

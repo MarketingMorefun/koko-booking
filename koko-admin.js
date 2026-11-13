@@ -757,7 +757,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
       var msg = "Saved #" + b.id + ".";
       if (emailAfter) {
         try {
-          var m = await post("ResendConfirmationEmail", { payload: { booking_id: b.id } });
+          var m = await post("ResendConfirmationEmail", { key: S.key, payload: { booking_id: b.id } });
           if (m.error_message) throw new Error(m.error_message);
           msg += " Updated confirmation emailed to " + r.booking.customer_email + ".";
         } catch (e2) { toast("Saved, but the email didn't send: " + e2.message, true); }
@@ -781,7 +781,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
   async function resend(b) {
     if (!confirm("Send the confirmation email for #" + b.id + " to " + b.customer_email + " again?")) return;
     try {
-      var r = await post("ResendConfirmationEmail", { payload: { booking_id: b.id } });
+      var r = await post("ResendConfirmationEmail", { key: S.key, payload: { booking_id: b.id } });
       if (r.error_message) throw new Error(r.message || r.error_message);
       toast("Confirmation email sent to " + b.customer_email + ".");
     } catch (e) { toast("Didn't send: " + e.message, true); }

@@ -36,564 +36,596 @@ query CreateGroupBooking verb=POST {
   }
 
   stack {
-    // 顺手清理过期 hold,保持订单表干净(跟 CreateBooking 保持一致)
     function.run expire_stale_holds as $expired_result
-  
-    var $error_message {
-      value = null
-    }
-  
-    var $Location {
-      value = null
-    }
-  
-    var $Package {
-      value = null
-    }
-  
-    var $PackagePrice {
-      value = null
-    }
-  
-    var $PackageRules {
-      value = null
-    }
-  
-    var $Booking {
-      value = null
-    }
-  
-    var $addons_json {
-      value = []
-    }
-  
-    var $addons_total_cents {
-      value = 0
-    }
-  
-    var $package_total_cents {
-      value = 0
-    }
-  
-    var $grand_total_cents {
-      value = 0
-    }
-  
-    var $balance_due_cents {
-      value = 0
-    }
-  
-    var $now_ts {
-      value = `"now"|to_timestamp:"Australia/Sydney"`
-    }
-  
-    var $hold_expires_at_ts {
-      value = $now_ts + 900000
-    }
-  
-    // ---- Referral / repeat-customer $30 discount ----
-    // Vars only — the actual lookup happens later, right before db.add,
-    // once every validation check has passed. See the comment down there
-    // for why (in short: reserving a credit before we're sure a booking
-    // will actually be created would strand it forever with no booking
-    // row around to ever release it back).
-    var $customer_email_normalised {
-      value = $input.payload.customer_email|trim|to_lower
-    }
-  
-    var $discount_cents {
-      value = 0
-    }
-  
-    var $discount_reason {
-      value = ""
-    }
-  
-    var $applied_credit_id {
-      value = 0
-    }
-  
-    var $referral_code_used {
-      value = ""
-    }
-  
-    var $AvailableCredit {
-      value = null
-    }
-  
-    // ============================================================
-    // 1) 入参校验(未改动)
-    // ============================================================
-    conditional {
-      if ($input.payload.location_slug == null || $input.payload.location_slug == "") {
+    db.transaction {
+      stack {
+        // 顺手清理过期 hold,保持订单表干净(跟 CreateBooking 保持一致)
+      
         var $error_message {
-          value = "Missing location"
-        }
-      }
-    
-      elseif ($input.payload.date == null || $input.payload.date == "") {
-        var $error_message {
-          value = "Missing date"
-        }
-      }
-    
-      elseif ($input.payload.guests == null || $input.payload.guests < 10) {
-        var $error_message {
-          value = "Group bookings require a minimum of 10 guests"
-        }
-      }
-    
-      elseif ($input.payload.package_id == null || $input.payload.package_id <= 0) {
-        var $error_message {
-          value = "Missing package"
-        }
-      }
-    
-      elseif ($input.payload.start_ts == null || $input.payload.start_ts <= 0) {
-        var $error_message {
-          value = "Missing start time"
-        }
-      }
-    
-      elseif ($input.payload.end_ts == null || $input.payload.end_ts <= 0) {
-        var $error_message {
-          value = "Missing end time"
-        }
-      }
-    
-      elseif ($input.payload.customer_name == null || $input.payload.customer_name == "") {
-        var $error_message {
-          value = "Missing customer name"
-        }
-      }
-    
-      elseif ($input.payload.customer_email == null || $input.payload.customer_email == "") {
-        var $error_message {
-          value = "Missing customer email"
-        }
-      }
-    
-      elseif ($input.payload.customer_phone == null || $input.payload.customer_phone == "") {
-        var $error_message {
-          value = "Missing customer phone"
-        }
-      }
-    }
-  
-    // ============================================================
-    // 2) 解析门店(未改动)
-    // ============================================================
-    conditional {
-      if ($error_message == null) {
-        db.get Locations {
-          field_name = "slug"
-          field_value = $input.payload.location_slug
-        } as $Location
-      }
-    }
-  
-    conditional {
-      if ($error_message == null && $Location == null) {
-        db.get Locations {
-          field_name = "Name"
-          field_value = $input.payload.location_slug
-        } as $Location
-      }
-    }
-  
-    conditional {
-      if ($error_message == null && $Location == null) {
-        var $error_message {
-          value = "Location not found"
-        }
-      }
-    
-      elseif ($error_message == null && $Location.is_active != true) {
-        var $error_message {
-          value = "Location is inactive"
-        }
-      }
-    }
-  
-    // ============================================================
-    // 3) 解析套餐(未改动)
-    // ============================================================
-    conditional {
-      if ($error_message == null) {
-        db.get Packages {
-          field_name = "id"
-          field_value = $input.payload.package_id
-        } as $Package
-      }
-    }
-  
-    conditional {
-      if ($error_message == null && $Package == null) {
-        var $error_message {
-          value = "Package not found"
-        }
-      }
-    
-      elseif ($error_message == null && $Package.is_active != true) {
-        var $error_message {
-          value = "Package is inactive"
-        }
-      }
-    
-      elseif ($error_message == null && $Package.Category != "group_booking") {
-        var $error_message {
-          value = "Selected package is not valid for group booking"
-        }
-      }
-    }
-  
-    // ============================================================
-    // 4) 套餐门店价(未改动)
-    // ============================================================
-    conditional {
-      if ($error_message == null) {
-        db.query package_location_price {
-          where = $db.package_location_price.location_id == $Location.id && $db.package_location_price.package_id == $Package.id && $db.package_location_price.is_active == true
-          return = {type: "single"}
-        } as $PackagePrice
-      }
-    }
-  
-    conditional {
-      if ($error_message == null && $PackagePrice == null) {
-        var $error_message {
-          value = "Package price not found for this location"
-        }
-      }
-    }
-  
-    // ============================================================
-    // 5) 套餐规则 + 人数上下限(未改动)
-    // ============================================================
-    conditional {
-      if ($error_message == null) {
-        db.query package_location_rules {
-          where = $db.package_location_rules.location_id == $Location.id && $db.package_location_rules.package_id == $Package.id && $db.package_location_rules.is_active == true
-          return = {type: "single"}
-        } as $PackageRules
-      }
-    }
-  
-    conditional {
-      if ($error_message == null && $PackageRules == null) {
-        var $error_message {
-          value = "Package rules not found for this location"
-        }
-      }
-    
-      elseif ($error_message == null && $PackageRules.min_guests != null && $input.payload.guests < $PackageRules.min_guests) {
-        var $error_message {
-          value = "Guest count is below this package minimum"
-        }
-      }
-    
-      elseif ($error_message == null && $PackageRules.max_guests != null && $input.payload.guests > $PackageRules.max_guests) {
-        var $error_message {
-          value = "Guest count is above this package maximum"
-        }
-      }
-    }
-  
-    // ============================================================
-    // 6) 套餐总价(未改动)= 每人价 × 人数
-    // ============================================================
-    conditional {
-      if ($error_message == null) {
-        var $package_total_cents {
-          value = $PackagePrice.price_pp_cents * $input.payload.guests
-        }
-      }
-    }
-  
-    // ============================================================
-    // 7) 附加项计价
-    // ============================================================
-    conditional {
-      if ($error_message == null) {
-        var $guests_int {
-          value = `$input.payload.guests|first_notnull:0|to_int`
+          value = null
         }
       
-        var $req_addons {
-          value = $input.payload.addons|first_notnull:[]
+        var $Location {
+          value = null
         }
       
-        db.query location_addons {
-          where = $db.location_addons.location_id == $Location.id && $db.location_addons.is_active == true
-          return = {type: "list"}
-        } as $loc_addon_list
+        var $Package {
+          value = null
+        }
       
-        array.map ($req_addons) {
-          by = {
-            addon_id    : `$this.addon_id|first_notnull:0|to_int`
-            qty         : `$this.qty|first_notnull:1|to_int`
-            option      : `$this|get:"option":null`
-            option_label: `$this|get:"option_label":null`
-            allergy_note: `$this|get:"allergy_note":null`
-          }
-        } as $addon_lines
+        var $PackagePrice {
+          value = null
+        }
       
-        array.map ($addon_lines) {
-          by = $this.addon_id
-        } as $addon_ids_int
+        var $PackageRules {
+          value = null
+        }
       
-        db.query Addons {
-          where = $db.Addons.id in $addon_ids_int && $db.Addons.is_active == true
-          return = {type: "list"}
-        } as $addon_defs
+        var $Booking {
+          value = null
+        }
       
         var $addons_json {
           value = []
         }
       
-        foreach ($addon_lines) {
-          each as $item {
-            array.filter ($loc_addon_list) if ($this.addon_id == $item.addon_id) as $m_loc_list
-            array.find ($m_loc_list) if ($this.id > 0) as $matched_loc_addon
-            array.filter ($addon_defs) if ($this.id == $item.addon_id) as $m_def_list
-            array.find ($m_def_list) if ($this.id > 0) as $matched_addon_def
-            conditional {
-              if ($matched_loc_addon == null || $matched_addon_def == null) {
-                var $error_message {
-                  value = "Invalid addon for this location"
-                }
-              }
-            }
-          
-            conditional {
-              if ($error_message == null) {
-                var $unit_type {
-                  value = `$matched_addon_def.unit_type|first_notnull:"per_item"`
-                }
-              
-                var $qty_num {
-                  value = `$item.qty|first_notnull:1|to_int`
-                }
-              
-                conditional {
-                  if ($qty_num < 1) {
-                    var $qty_num {
-                      value = 1
-                    }
-                  }
-                }
-              
-                var $price_num {
-                  value = `$matched_loc_addon.default_price_cents|first_notnull:0|to_int`
-                }
-              
-                conditional {
-                  if ($price_num == 0 && $matched_loc_addon.price != null) {
-                    var $price_num {
-                      value = ($matched_loc_addon.price|multiply:100)|round:0
-                    }
-                  }
-                }
-              
-                conditional {
-                  if ($unit_type == "per_person") {
-                    var $line_total_cents {
-                      value = $price_num|multiply:$guests_int
-                    }
-                  }
-                
-                  else {
-                    var $line_total_cents {
-                      value = $price_num|multiply:$qty_num
-                    }
-                  }
-                }
-              
-                var $addons_total_cents {
-                  value = `$addons_total_cents|add:$line_total_cents`
-                }
-              
-                array.push $addons_json {
-                  value = {
-                    addon_id        : $matched_addon_def.id
-                    addon_name      : $matched_addon_def.name
-                    qty             : $qty_num
-                    unit_type       : $unit_type
-                    unit_price_cents: $price_num
-                    line_total_cents: $line_total_cents
-                    option          : $item.option
-                    option_label    : $item.option_label
-                    allergy_note    : $item.allergy_note
-                  }
-                }
-              }
-            }
-          }
+        var $addons_total_cents {
+          value = 0
         }
-      }
-    }
-  
-    // ============================================================
-    // 8) 合计
-    // ============================================================
-    conditional {
-      if ($error_message == null) {
-        var $grand_total_cents {
-          value = $package_total_cents + $addons_total_cents
-        }
-      }
-    }
-  
-    conditional {
-      if ($error_message == null && $grand_total_cents <= 0) {
-        var $error_message {
-          value = "Booking total is invalid"
-        }
-      }
-    }
-  
-    // ============================================================
-    // 8.5) 推荐 / 复购折扣 —— 就放在这里(所有校验都通过之后,建单之前)
-    // 而不是放在最前面,是因为一旦占用一张 credit(标成 pending),就必须
-    // 保证接下来一定会建出一条 booking 记录,不然这张 credit 占了却没有
-    // booking 能在 24 小时清理时把它放回来,会永久卡死。
-    // 占用改成 pending(不是 available)之后,同一个人同时开两个 hold
-    // 就不会再抢到同一张 credit——第二个 hold 查询时已经看不到它了。
-    // ============================================================
-    conditional {
-      if ($error_message == null) {
-        db.query customer_credits {
-          where = $db.customer_credits.customer_email == $customer_email_normalised && $db.customer_credits.status == "available"
-          return = {type: "single"}
-        } as $AvailableCredit
       
+        var $package_total_cents {
+          value = 0
+        }
+      
+        var $grand_total_cents {
+          value = 0
+        }
+      
+        var $balance_due_cents {
+          value = 0
+        }
+      
+        var $now_ts {
+          value = `"now"|to_timestamp:"Australia/Sydney"`
+        }
+      
+        var $hold_expires_at_ts {
+          value = $now_ts + 900000
+        }
+      
+        // ---- Referral / repeat-customer $30 discount ----
+        // Vars only — the actual lookup happens later, right before db.add,
+        // once every validation check has passed. See the comment down there
+        // for why (in short: reserving a credit before we're sure a booking
+        // will actually be created would strand it forever with no booking
+        // row around to ever release it back).
+        var $customer_email_normalised {
+          value = $input.payload.customer_email|trim|to_lower
+        }
+      
+        var $discount_cents {
+          value = 0
+        }
+      
+        var $discount_reason {
+          value = ""
+        }
+      
+        var $applied_credit_id {
+          value = 0
+        }
+      
+        var $referral_code_used {
+          value = ""
+        }
+      
+        var $AvailableCredit {
+          value = null
+        }
+      
+        // ============================================================
+        // 1) 入参校验(未改动)
+        // ============================================================
         conditional {
-          if ($AvailableCredit != null) {
-            var $discount_cents {
-              value = 3000
+          if ($input.payload.location_slug == null || $input.payload.location_slug == "") {
+            var $error_message {
+              value = "Missing location"
             }
-          
-            var $discount_reason {
-              value = "repeat_customer"
-            }
-          
-            var $applied_credit_id {
-              value = $AvailableCredit.id
-            }
-          
-            db.patch customer_credits {
-              field_name = "id"
-              field_value = $AvailableCredit.id
-              data = {status: "pending"}
-            } as $ReservedCredit
           }
         
-          elseif ($input.payload.referral_code != null && $input.payload.referral_code != "") {
-            db.query bookings {
-              where = $db.bookings.referral_code == $input.payload.referral_code && ($db.bookings.status == "deposit_paid" || $db.bookings.status == "paid")
+          elseif ($input.payload.date == null || $input.payload.date == "") {
+            var $error_message {
+              value = "Missing date"
+            }
+          }
+        
+          elseif ($input.payload.guests == null || $input.payload.guests < 10) {
+            var $error_message {
+              value = "Group bookings require a minimum of 10 guests"
+            }
+          }
+        
+          elseif ($input.payload.package_id == null || $input.payload.package_id <= 0) {
+            var $error_message {
+              value = "Missing package"
+            }
+          }
+        
+          elseif ($input.payload.start_ts == null || $input.payload.start_ts <= 0) {
+            var $error_message {
+              value = "Missing start time"
+            }
+          }
+        
+          elseif ($input.payload.end_ts == null || $input.payload.end_ts <= 0) {
+            var $error_message {
+              value = "Missing end time"
+            }
+          }
+        
+          elseif ($input.payload.customer_name == null || $input.payload.customer_name == "") {
+            var $error_message {
+              value = "Missing customer name"
+            }
+          }
+        
+          elseif ($input.payload.customer_email == null || $input.payload.customer_email == "") {
+            var $error_message {
+              value = "Missing customer email"
+            }
+          }
+        
+          elseif ($input.payload.customer_phone == null || $input.payload.customer_phone == "") {
+            var $error_message {
+              value = "Missing customer phone"
+            }
+          }
+        }
+      
+        // ============================================================
+        // 2) 解析门店(未改动)
+        // ============================================================
+        conditional {
+          if ($error_message == null) {
+            db.get Locations {
+              field_name = "slug"
+              field_value = $input.payload.location_slug
+            } as $Location
+          }
+        }
+      
+        conditional {
+          if ($error_message == null && $Location == null) {
+            db.get Locations {
+              field_name = "Name"
+              field_value = $input.payload.location_slug
+            } as $Location
+          }
+        }
+      
+        conditional {
+          if ($error_message == null && $Location == null) {
+            var $error_message {
+              value = "Location not found"
+            }
+          }
+        
+          elseif ($error_message == null && $Location.is_active != true) {
+            var $error_message {
+              value = "Location is inactive"
+            }
+          }
+        }
+      
+        // ============================================================
+        // 3) 解析套餐(未改动)
+        // ============================================================
+        conditional {
+          if ($error_message == null) {
+            db.get Packages {
+              field_name = "id"
+              field_value = $input.payload.package_id
+            } as $Package
+          }
+        }
+      
+        conditional {
+          if ($error_message == null && $Package == null) {
+            var $error_message {
+              value = "Package not found"
+            }
+          }
+        
+          elseif ($error_message == null && $Package.is_active != true) {
+            var $error_message {
+              value = "Package is inactive"
+            }
+          }
+        
+          elseif ($error_message == null && $Package.Category != "group_booking") {
+            var $error_message {
+              value = "Selected package is not valid for group booking"
+            }
+          }
+        }
+      
+        // ============================================================
+        // 4) 套餐门店价(未改动)
+        // ============================================================
+        conditional {
+          if ($error_message == null) {
+            db.query package_location_price {
+              where = $db.package_location_price.location_id == $Location.id && $db.package_location_price.package_id == $Package.id && $db.package_location_price.is_active == true
               return = {type: "single"}
-            } as $ReferringBooking
+            } as $PackagePrice
+          }
+        }
+      
+        conditional {
+          if ($error_message == null && $PackagePrice == null) {
+            var $error_message {
+              value = "Package price not found for this location"
+            }
+          }
+        }
+      
+        // ============================================================
+        // 5) 套餐规则 + 人数上下限(未改动)
+        // ============================================================
+        conditional {
+          if ($error_message == null) {
+            db.query package_location_rules {
+              where = $db.package_location_rules.location_id == $Location.id && $db.package_location_rules.package_id == $Package.id && $db.package_location_rules.is_active == true
+              return = {type: "single"}
+            } as $PackageRules
+          }
+        }
+      
+        conditional {
+          if ($error_message == null && $PackageRules == null) {
+            var $error_message {
+              value = "Package rules not found for this location"
+            }
+          }
+        
+          elseif ($error_message == null && $PackageRules.min_guests != null && $input.payload.guests < $PackageRules.min_guests) {
+            var $error_message {
+              value = "Guest count is below this package minimum"
+            }
+          }
+        
+          elseif ($error_message == null && $PackageRules.max_guests != null && $input.payload.guests > $PackageRules.max_guests) {
+            var $error_message {
+              value = "Guest count is above this package maximum"
+            }
+          }
+        }
+      
+        // ============================================================
+        // 6) 套餐总价(未改动)= 每人价 × 人数
+        // ============================================================
+        conditional {
+          if ($error_message == null) {
+            var $package_total_cents {
+              value = $PackagePrice.price_pp_cents * $input.payload.guests
+            }
+          }
+        }
+      
+        // ============================================================
+        // 7) 附加项计价
+        // ============================================================
+        conditional {
+          if ($error_message == null) {
+            var $guests_int {
+              value = `$input.payload.guests|first_notnull:0|to_int`
+            }
+          
+            var $req_addons {
+              value = $input.payload.addons|first_notnull:[]
+            }
+          
+            db.query location_addons {
+              where = $db.location_addons.location_id == $Location.id && $db.location_addons.is_active == true
+              return = {type: "list"}
+            } as $loc_addon_list
+          
+            array.map ($req_addons) {
+              by = {
+                addon_id    : `$this.addon_id|first_notnull:0|to_int`
+                qty         : `$this.qty|first_notnull:1|to_int`
+                option      : `$this|get:"option":null`
+                option_label: `$this|get:"option_label":null`
+                allergy_note: `$this|get:"allergy_note":null`
+              }
+            } as $addon_lines
+          
+            array.map ($addon_lines) {
+              by = $this.addon_id
+            } as $addon_ids_int
+          
+            db.query Addons {
+              where = $db.Addons.id in $addon_ids_int && $db.Addons.is_active == true
+              return = {type: "list"}
+            } as $addon_defs
+          
+            var $addons_json {
+              value = []
+            }
+          
+            foreach ($addon_lines) {
+              each as $item {
+                array.filter ($loc_addon_list) if ($this.addon_id == $item.addon_id) as $m_loc_list
+                array.find ($m_loc_list) if ($this.id > 0) as $matched_loc_addon
+                array.filter ($addon_defs) if ($this.id == $item.addon_id) as $m_def_list
+                array.find ($m_def_list) if ($this.id > 0) as $matched_addon_def
+                conditional {
+                  if ($matched_loc_addon == null || $matched_addon_def == null) {
+                    var $error_message {
+                      value = "Invalid addon for this location"
+                    }
+                  }
+                }
+              
+                conditional {
+                  if ($error_message == null) {
+                    var $unit_type {
+                      value = `$matched_addon_def.unit_type|first_notnull:"per_item"`
+                    }
+                  
+                    var $qty_num {
+                      value = `$item.qty|first_notnull:1|to_int`
+                    }
+                  
+                    conditional {
+                      if ($qty_num < 1) {
+                        var $qty_num {
+                          value = 1
+                        }
+                      }
+                    }
+                  
+                    var $price_num {
+                      value = `$matched_loc_addon.default_price_cents|first_notnull:0|to_int`
+                    }
+                  
+                    conditional {
+                      if ($price_num == 0 && $matched_loc_addon.price != null) {
+                        var $price_num {
+                          value = ($matched_loc_addon.price|multiply:100)|round:0
+                        }
+                      }
+                    }
+                  
+                    conditional {
+                      if ($unit_type == "per_person") {
+                        var $line_total_cents {
+                          value = $price_num|multiply:$guests_int
+                        }
+                      }
+                    
+                      else {
+                        var $line_total_cents {
+                          value = $price_num|multiply:$qty_num
+                        }
+                      }
+                    }
+                  
+                    var $addons_total_cents {
+                      value = `$addons_total_cents|add:$line_total_cents`
+                    }
+                  
+                    array.push $addons_json {
+                      value = {
+                        addon_id        : $matched_addon_def.id
+                        addon_name      : $matched_addon_def.name
+                        qty             : $qty_num
+                        unit_type       : $unit_type
+                        unit_price_cents: $price_num
+                        line_total_cents: $line_total_cents
+                        option          : $item.option
+                        option_label    : $item.option_label
+                        allergy_note    : $item.allergy_note
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      
+        // ============================================================
+        // 8) 合计
+        // ============================================================
+        conditional {
+          if ($error_message == null) {
+            var $grand_total_cents {
+              value = $package_total_cents + $addons_total_cents
+            }
+          }
+        }
+      
+        conditional {
+          if ($error_message == null && $grand_total_cents <= 0) {
+            var $error_message {
+              value = "Booking total is invalid"
+            }
+          }
+        }
+      
+        // ============================================================
+        // 8.5) 推荐 / 复购折扣 —— 就放在这里(所有校验都通过之后,建单之前)
+        // 而不是放在最前面,是因为一旦占用一张 credit(标成 pending),就必须
+        // 保证接下来一定会建出一条 booking 记录,不然这张 credit 占了却没有
+        // booking 能在 24 小时清理时把它放回来,会永久卡死。
+        // 占用改成 pending(不是 available)之后,同一个人同时开两个 hold
+        // 就不会再抢到同一张 credit——第二个 hold 查询时已经看不到它了。
+        // ============================================================
+        conditional {
+          if ($error_message == null) {
+            db.query customer_credits {
+              where = $db.customer_credits.customer_email == $customer_email_normalised && $db.customer_credits.status == "available"
+              return = {type: "single"}
+            } as $AvailableCredit
           
             conditional {
-              if ($ReferringBooking != null && ($ReferringBooking.customer_email|trim|to_lower) != $customer_email_normalised) {
+              if ($AvailableCredit != null) {
+                db.get customer_credits {
+                  field_name = "id"
+                  field_value = $AvailableCredit.id
+                  lock = true
+                } as $AvailableCredit
+              
+                conditional {
+                  if ($AvailableCredit.status != "available") {
+                    var $AvailableCredit {
+                      value = null
+                    }
+                  }
+                }
+              }
+            }
+          
+            conditional {
+              if ($AvailableCredit != null) {
                 var $discount_cents {
                   value = 3000
                 }
               
                 var $discount_reason {
-                  value = "referral"
+                  value = "repeat_customer"
                 }
               
-                var $referral_code_used {
-                  value = $input.payload.referral_code
+                var $applied_credit_id {
+                  value = $AvailableCredit.id
+                }
+              
+                db.patch customer_credits {
+                  field_name = "id"
+                  field_value = $AvailableCredit.id
+                  data = {status: "pending"}
+                } as $ReservedCredit
+              }
+            
+              elseif ($input.payload.referral_code != null && $input.payload.referral_code != "") {
+                db.query bookings {
+                  where = $db.bookings.referral_code == $input.payload.referral_code && ($db.bookings.status == "deposit_paid" || $db.bookings.status == "paid")
+                  return = {type: "single"}
+                } as $ReferringBooking
+              
+                conditional {
+                  if ($ReferringBooking != null && ($ReferringBooking.customer_email|trim|to_lower) != $customer_email_normalised) {
+                    var $discount_cents {
+                      value = 3000
+                    }
+                  
+                    var $discount_reason {
+                      value = "referral"
+                    }
+                  
+                    var $referral_code_used {
+                      value = $input.payload.referral_code
+                    }
+                  }
+                }
+              }
+            }
+          
+            var $balance_due_cents {
+              value = $grand_total_cents - $discount_cents
+            }
+          
+            conditional {
+              if ($balance_due_cents < 0) {
+                var $balance_due_cents {
+                  value = 0
                 }
               }
             }
           }
         }
       
-        var $balance_due_cents {
-          value = $grand_total_cents - $discount_cents
-        }
-      
+        // ============================================================
+        // 9) 建单
+        // ============================================================
         conditional {
-          if ($balance_due_cents < 0) {
-            var $balance_due_cents {
-              value = 0
-            }
-          }
-        }
-      }
-    }
-  
-    // ============================================================
-    // 9) 建单
-    // ============================================================
-    conditional {
-      if ($error_message == null) {
-        db.add bookings {
-          enforce_hidden_fields = false
-          data = {
-            booking_type              : "group_booking"
-            status                    : "hold"
-            location_id               : $Location.id
-            package_id                : $Package.id
-            date                      : $input.payload.date
-            start_ts                  : $input.payload.start_ts
-            end_ts                    : $input.payload.end_ts
-            guests                    : $input.payload.guests
-            addons_json               : $addons_json
-            customer_name             : $input.payload.customer_name
-            customer_phone            : $input.payload.customer_phone
-            customer_email            : $input.payload.customer_email
-            booking_notes             : $input.payload.booking_notes
-            package_total_cents       : $package_total_cents
-            addons_total_cents        : $addons_total_cents
-            grand_total_cents         : $grand_total_cents
-            balance_due_cents         : $balance_due_cents
-            discount_cents            : $discount_cents
-            discount_reason           : $discount_reason
-            applied_credit_id         : $applied_credit_id
-            referral_code_used        : $referral_code_used
-            referral_code             : ""
-            utm_source                : $input.payload.utm_source
-            utm_medium                : $input.payload.utm_medium
-            utm_campaign              : $input.payload.utm_campaign
-            landing_referrer          : $input.payload.landing_referrer
-            entry_page                : $input.payload.entry_page
-            marketing_consent         : $input.payload.marketing_consent|first_notnull:false
-            deposit_paid_cents        : 0
-            payment_url               : ""
-            stripe_session_id         : ""
-            paid_at                   : null
-            confirmation_email_sent_at: null
-            hold_expires_at_ts        : $hold_expires_at_ts
-          }
-        } as $Booking
-      
-        // Marketing consent ticked -> add them to Mailchimp (tag "online
-        // booking"). Never blocks the booking: the function only reports
-        // ok/status, and a Mailchimp hiccup doesn't change the response.
-        conditional {
-          if ($input.payload.marketing_consent) {
-            // try_catch: a Mailchimp error must never turn a saved booking into
-            // an error response for the customer.
-            try_catch {
-              try {
-                function.run mailchimp_subscribe {
-                  input = {
-                    email     : $input.payload.customer_email
-                    first_name: $input.payload.customer_name|first_notnull:""|trim|split:" "|first
-                    store     : $Location.Name
-                    phone     : $input.payload.customer_phone
-                    tag       : "online booking"
-                  }
-                } as $MailchimpResult
+          if ($error_message == null) {
+            db.add bookings {
+              enforce_hidden_fields = false
+              data = {
+                booking_type              : "group_booking"
+                status                    : "hold"
+                location_id               : $Location.id
+                package_id                : $Package.id
+                date                      : $input.payload.date
+                start_ts                  : $input.payload.start_ts
+                end_ts                    : $input.payload.end_ts
+                guests                    : $input.payload.guests
+                addons_json               : $addons_json
+                customer_name             : $input.payload.customer_name
+                customer_phone            : $input.payload.customer_phone
+                customer_email            : $input.payload.customer_email
+                booking_notes             : $input.payload.booking_notes
+                package_total_cents       : $package_total_cents
+                addons_total_cents        : $addons_total_cents
+                grand_total_cents         : $grand_total_cents
+                balance_due_cents         : $balance_due_cents
+                discount_cents            : $discount_cents
+                discount_reason           : $discount_reason
+                applied_credit_id         : $applied_credit_id
+                referral_code_used        : $referral_code_used
+                referral_code             : ""
+                utm_source                : $input.payload.utm_source
+                utm_medium                : $input.payload.utm_medium
+                utm_campaign              : $input.payload.utm_campaign
+                landing_referrer          : $input.payload.landing_referrer
+                entry_page                : $input.payload.entry_page
+                marketing_consent         : $input.payload.marketing_consent|first_notnull:false
+                deposit_paid_cents        : 0
+                payment_url               : ""
+                stripe_session_id         : ""
+                paid_at                   : null
+                confirmation_email_sent_at: null
+                hold_expires_at_ts        : $hold_expires_at_ts
               }
-            
-              catch {
-                var $MailchimpResult {
-                  value = {ok: false, status: 0}
+            } as $Booking
+          
+            conditional {
+              if ($applied_credit_id > 0) {
+                db.patch customer_credits {
+                  field_name = "id"
+                  field_value = $applied_credit_id
+                  data = {status: "pending", used_booking_id: $Booking.id}
+                } as $OwnedCredit
+              }
+            }
+          
+            // Marketing consent ticked -> add them to Mailchimp (tag "online
+            // booking"). Never blocks the booking: the function only reports
+            // ok/status, and a Mailchimp hiccup doesn't change the response.
+            conditional {
+              if ($input.payload.marketing_consent) {
+                // try_catch: a Mailchimp error must never turn a saved booking into
+                // an error response for the customer.
+                try_catch {
+                  try {
+                    function.run mailchimp_subscribe {
+                      input = {
+                        email     : $input.payload.customer_email
+                        first_name: $input.payload.customer_name|first_notnull:""|trim|split:" "|first
+                        store     : $Location.Name
+                        phone     : $input.payload.customer_phone
+                        tag       : "online booking"
+                      }
+                    } as $MailchimpResult
+                  }
+                
+                  catch {
+                    var $MailchimpResult {
+                      value = {ok: false, status: 0}
+                    }
+                  }
                 }
               }
             }

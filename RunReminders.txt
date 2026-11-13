@@ -58,6 +58,8 @@ query RunReminders verb=POST {
       }
     
       else {
+        function.run booking_reliability_worker as $Reliability
+      
         // Every booking made in the last 24h (any status). Used to spot a
         // customer who has since made a newer booking with the same email
         // (compared in memory: where= can't |to_lower a db column).

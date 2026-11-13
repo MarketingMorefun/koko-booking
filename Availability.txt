@@ -1,0 +1,205 @@
+query Availability verb=POST {
+  api_group = "KOKO Booking"
+
+  input {
+    object payload {
+      schema {
+        text location_slug filters=trim
+        date date
+        int guests
+      }
+    }
+  }
+
+  stack {
+    function.run expire_stale_holds as $Expired
+    db.get Locations {
+      field_name = "slug"
+      field_value = $input.payload.location_slug
+    } as $Locations1
+  
+    var $guests_int {
+      value = `$input.payload.guests | first_notnull:0 | to_int`
+    }
+  
+    db.query party_rooms {
+      where = $db.party_rooms.Location_id == $Locations1.id && $db.party_rooms.is_active == true && $db.party_rooms.capacity_min <= $guests_int && $db.party_rooms.capacity_max >= $guests_int
+      return = {type: "list"}
+    } as $room_list
+  
+    db.query package_location_rules {
+      where = $db.package_location_rules.location_id == $Locations1.id && $db.package_location_rules.is_active == true && $db.package_location_rules.min_guests <= $guests_int && $db.package_location_rules.max_guests >= $guests_int
+      return = {type: "list"}
+    } as $available_packages
+  
+    array.map ($room_list) {
+      by = $this.id
+    } as $room_ids
+  
+    var $date_raw {
+      value = `$input.payload.date`
+    }
+  
+    var $date_ts {
+      value = `$input.payload.date | first_notnull:"now" | to_timestamp:"Australia/Sydney"`
+    }
+  
+    var $now_ts {
+      value = `"now"|to_timestamp:"Australia/Sydney"`
+    }
+  
+    var $weekday_name {
+      value = `$date_ts | format_timestamp:"l":"Australia/Sydney"`
+    }
+  
+    var $day_of_week {
+      value = 6
+    }
+  
+    conditional {
+      if ($weekday_name == "Sunday") {
+        var $day_of_week {
+          value = 0
+        }
+      }
+    
+      elseif ($weekday_name == "Monday") {
+        var $day_of_week {
+          value = 1
+        }
+      }
+    
+      elseif ($weekday_name == "Tuesday") {
+        var $day_of_week {
+          value = 2
+        }
+      }
+    
+      elseif ($weekday_name == "Wednesday") {
+        var $day_of_week {
+          value = 3
+        }
+      }
+    
+      elseif ($weekday_name == "Thursday") {
+        var $day_of_week {
+          value = 4
+        }
+      }
+    
+      elseif ($weekday_name == "Friday") {
+        var $day_of_week {
+          value = 5
+        }
+      }
+    }
+  
+    db.query availability_rules {
+      where = $db.availability_rules.location_id == $Locations1.id && $db.availability_rules.is_active == true && $db.availability_rules.day_of_week == $day_of_week && $db.availability_rules.party_room_id in $room_ids
+      return = {type: "list"}
+    } as $rule_list
+  
+    var $room_slots {
+      value = []
+    }
+  
+    foreach ($rule_list) {
+      each as $rule {
+        db.get party_rooms {
+          field_name = "id"
+          field_value = $rule.party_room_id
+        } as $matched_room
+      
+        var $slots {
+          value = []
+        }
+      
+        var $t {
+          value = `$rule.start_time|first_notnull:0|to_int`
+        }
+      
+        var $end {
+          value = `$rule.end_time|first_notnull:0|to_int`
+        }
+      
+        var $step {
+          value = `$rule.slot_minutes|first_notnull:60|to_int`
+        }
+      
+        var $step_ms {
+          value = `$step|to_int|mul:60|mul:1000`
+        }
+      
+        var $min_bookable_ts {
+          value = `"now"|to_timestamp:"Australia/Sydney"|add_ms_to_timestamp:259200000`
+        }
+      
+        while (($t|add:$step) <= $end) {
+          each {
+            var $offset_ms {
+              value = `$t|to_int|mul:60|mul:1000`
+            }
+          
+            var $start_ts {
+              value = `$date_ts|add_ms_to_timestamp:$offset_ms`
+            }
+          
+            var $start_label {
+              value = `$start_ts|format_timestamp:"H:i":"Australia/Sydney"`
+            }
+          
+            var $end_ts {
+              value = `$start_ts|add_ms_to_timestamp:$step_ms`
+            }
+          
+            var $end_label {
+              value = `$end_ts|format_timestamp:"H:i":"Australia/Sydney"`
+            }
+          
+            db.query bookings {
+              where = $db.bookings.location_id == $Locations1.id && $db.bookings.party_room_id == $rule.party_room_id && $db.bookings.date == $input.payload.date && $db.bookings.start_ts < $end_ts && $db.bookings.end_ts > $start_ts && ($db.bookings.status == "pending_payment" || $db.bookings.status == "deposit_paid" || $db.bookings.status == "paid" || $db.bookings.status == "confirmed" || ($db.bookings.status == "hold" && $db.bookings.hold_expires_at_ts > $now_ts))
+              return = {type: "list"}
+            } as $slot_conflicts
+          
+            conditional {
+              if ($slot_conflicts[0] == null && $start_ts >= $min_bookable_ts) {
+                array.push $slots {
+                  value = {
+                    start_min  : $t
+                    start_label: $start_label
+                    start_ts   : $start_ts
+                    end_ts     : $end_ts
+                    end_label  : $end_label
+                  }
+                }
+              }
+            }
+          
+            var $t {
+              value = `$t|add:$step`
+            }
+          }
+        }
+      
+        array.push $room_slots {
+          value = {
+            party_room_id: $rule.party_room_id
+            name         : $matched_room.name
+            image_url    : $matched_room.image_url
+            capacity_min : $matched_room.capacity_min
+            capacity_max : $matched_room.capacity_max
+            slots        : $slots
+          }
+        }
+      }
+    }
+  }
+
+  response = {
+    location          : $Locations1
+    date              : $date_raw
+    guests            : $guests_int
+    available_packages: $available_packages
+    room_slots        : $room_slots
+  }
+}

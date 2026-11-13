@@ -1,0 +1,186 @@
+function apply_stripe_checkout {
+  input {
+    int booking_id
+    json session
+    text event_id
+    text event_type
+  }
+
+  stack {
+    var $Decision {
+      value = {action: "ignore"}
+    }
+  
+    db.transaction {
+      stack {
+        db.get bookings {
+          field_name = "id"
+          field_value = $input.booking_id
+          lock = true
+        } as $Booking
+      
+        conditional {
+          if ($Booking != null) {
+            api.lambda {
+              code = """
+                const b = $var.Booking, s = $input.session;
+                const log = Array.isArray(b.payment_event_log) ? b.payment_event_log : [];
+                let action = 'ignore', reason = '';
+                const paid = ['deposit_paid','paid'].includes(b.status);
+                const unpaid = ['hold','pending_payment'].includes(b.status);
+                const paymentType = b.checkout_payment_type || s.metadata?.payment_type || 'deposit';
+                const payment = b.checkout_payment_cents || (paymentType === 'full' ? Math.max(0,b.grand_total_cents-(b.discount_cents||0)) : 5000);
+                const total = b.checkout_total_cents || payment+150;
+                if (log.some(e => e.id === $input.event_id)) action = 'duplicate';
+                else if (s.id !== b.stripe_session_id) { reason = 'Superseded checkout session'; action = s.payment_status === 'paid' ? 'review' : 'ignore'; }
+                else if (s.mode !== 'payment' || s.livemode !== true || s.currency !== 'aud' || String(s.client_reference_id) !== String(b.id) || String(s.metadata?.booking_id) !== String(b.id) || String(s.metadata?.location_id) !== String(b.location_id)) { action = 'review'; reason = 'Checkout identity, mode or currency does not match booking'; }
+                else if (s.status === 'expired' && unpaid) action = 'expire';
+                else if (s.status === 'complete' && s.payment_status === 'paid') {
+                  if (!Number.isSafeInteger(s.amount_total) || s.amount_total !== total || Number(s.metadata?.deposit_cents) !== payment || Number(s.metadata?.surcharge_cents) !== 150 || !['deposit','full'].includes(paymentType) || (b.checkout_payment_type && s.metadata?.payment_type !== paymentType)) { action = 'review'; reason = 'Checkout amount does not match stored payment expectation'; }
+                  else if (b.payment_processed_session_id === s.id || paid) action = 'duplicate';
+                  else if (unpaid) action = 'settle';
+                  else { action = 'review'; reason = 'Payment arrived for a closed booking'; }
+                }
+                return {action,reason,payment_cents:payment,balance_cents:Math.max(0,b.grand_total_cents-(b.discount_cents||0)-payment),referral_code:b.referral_code || 'KOKO-'+b.id+'-'+crypto.randomBytes(6).toString('hex').toUpperCase(),log:log.some(e=>e.id===$input.event_id)?log:[...log,{id:$input.event_id,type:$input.event_type,session_id:s.id,action,at:Date.now()}].slice(-100)};
+                """
+              timeout = 10
+            } as $Decision
+          
+            db.patch bookings {
+              field_name = "id"
+              field_value = $Booking.id
+              data = {payment_event_log: $Decision.log}
+            } as $Logged
+          
+            conditional {
+              if ($Decision.action == "settle" && ($Booking.applied_credit_id|first_notnull:0) > 0) {
+                db.get customer_credits {
+                  field_name = "id"
+                  field_value = $Booking.applied_credit_id
+                  lock = true
+                } as $CreditCheck
+              
+                conditional {
+                  if ($CreditCheck == null || $CreditCheck.status != "pending" || ($CreditCheck.used_booking_id != $Booking.id && $CreditCheck.used_booking_id != 0)) {
+                    var $Decision {
+                      value = $Decision
+                        |set:"action":"review"
+                        |set:"reason":"Paid checkout has no matching reserved discount credit"
+                    }
+                  }
+                }
+              }
+            }
+          
+            conditional {
+              if ($Decision.action == "settle") {
+                conditional {
+                  if (($Booking.applied_credit_id|first_notnull:0) > 0) {
+                    db.get customer_credits {
+                      field_name = "id"
+                      field_value = $Booking.applied_credit_id
+                      lock = true
+                    } as $UsedCredit
+                  
+                    precondition ($UsedCredit != null && $UsedCredit.status == "pending" && ($UsedCredit.used_booking_id == $Booking.id || $UsedCredit.used_booking_id == 0)) {
+                      error_type = "inputerror"
+                      error = "Reserved credit is not owned by this booking; payment needs reconciliation"
+                    }
+                  
+                    db.patch customer_credits {
+                      field_name = "id"
+                      field_value = $UsedCredit.id
+                      data = {status: "used", used_booking_id: $Booking.id}
+                    } as $UsedCredit
+                  }
+                
+                  elseif ($Booking.discount_reason == "referral" && $Booking.referral_code_used != "") {
+                    db.query bookings {
+                      where = $db.bookings.referral_code == $Booking.referral_code_used
+                      return = {type: "single"}
+                    } as $ReferringBooking
+                  
+                    db.query customer_credits {
+                      where = $db.customer_credits.source_booking_id == $Booking.id && $db.customer_credits.reason == "referral_reward"
+                      return = {type: "single"}
+                    } as $ExistingReferralReward
+                  
+                    conditional {
+                      if ($ReferringBooking != null && $ExistingReferralReward == null) {
+                        db.add customer_credits {
+                          data = {
+                            customer_email   : $ReferringBooking.customer_email|trim|to_lower
+                            amount_cents     : 3000
+                            reason           : "referral_reward"
+                            source_booking_id: $Booking.id
+                            status           : "available"
+                            used_booking_id  : 0
+                          }
+                        } as $ReferralReward
+                      }
+                    }
+                  }
+                }
+              
+                db.query customer_credits {
+                  where = $db.customer_credits.source_booking_id == $Booking.id && $db.customer_credits.reason == "repeat_customer"
+                  return = {type: "single"}
+                } as $ExistingRepeatReward
+              
+                conditional {
+                  if ($ExistingRepeatReward == null) {
+                    db.add customer_credits {
+                      data = {
+                        customer_email   : $Booking.customer_email|trim|to_lower
+                        amount_cents     : 3000
+                        reason           : "repeat_customer"
+                        source_booking_id: $Booking.id
+                        status           : "available"
+                        used_booking_id  : 0
+                      }
+                    } as $RepeatReward
+                  }
+                }
+              
+                db.patch bookings {
+                  field_name = "id"
+                  field_value = $Booking.id
+                  data = ```
+                    {
+                      status: "deposit_paid"
+                      paid_at: "now"
+                      hold_expires_at_ts: 0
+                      deposit_paid_cents: $Decision.payment_cents
+                      balance_due_cents: $Decision.balance_cents
+                      referral_code: $Decision.referral_code
+                      payment_processed_session_id: $input.session.id
+                      payment_review_reason: ""
+                      confirmation_email_status: "queued"
+                      confirmation_email_next_retry_at: "now"
+                    }
+                    ```
+                } as $Booking
+              }
+            
+              elseif ($Decision.action == "expire") {
+                function.run release_booking_checkout {
+                  input = {booking_id: $Booking.id, session_id: $input.session.id}
+                } as $Released
+              }
+            
+              elseif ($Decision.action == "review") {
+                db.patch bookings {
+                  field_name = "id"
+                  field_value = $Booking.id
+                  data = {payment_review_reason: $Decision.reason}
+                } as $Reviewed
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  response = $Decision
+}

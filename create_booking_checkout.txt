@@ -1,0 +1,255 @@
+function create_booking_checkout {
+  input {
+    int booking_id
+    text payment_option
+    text booking_type
+  }
+
+  stack {
+    db.get bookings {
+      field_name = "id"
+      field_value = $input.booking_id
+    } as $InitialBooking
+  
+    precondition ($InitialBooking != null) {
+      error_type = "inputerror"
+      error = "Booking not found"
+    }
+  
+    var $payment_url {
+      value = null
+    }
+  
+    var $stripe_session_id {
+      value = null
+    }
+  
+    var $now_ts {
+      value = "now"|to_timestamp
+    }
+  
+    db.transaction {
+      stack {
+        // Same room lock is used by CreateBooking, so slot rechecks are atomic.
+        conditional {
+          if ($InitialBooking.party_room_id > 0) {
+            db.get party_rooms {
+              field_name = "id"
+              field_value = $InitialBooking.party_room_id
+              lock = true
+            } as $LockedRoom
+          }
+        }
+      
+        db.get bookings {
+          field_name = "id"
+          field_value = $input.booking_id
+          lock = true
+        } as $Booking
+      
+        precondition ($Booking.booking_type == $input.booking_type && ($Booking.status == "hold" || $Booking.status == "pending_payment") && $Booking.grand_total_cents > 0) {
+          error_type = "inputerror"
+          error = "Only an unpaid booking of the correct type can be paid"
+        }
+      
+        precondition ($Booking.created_at > ($now_ts|add_ms_to_timestamp:-86400000)) {
+          error_type = "inputerror"
+          error = "This booking has expired. Please start a new booking."
+        }
+      
+        conditional {
+          if ($Booking.party_room_id > 0) {
+            db.query bookings {
+              where = $db.bookings.id != $Booking.id && $db.bookings.location_id == $Booking.location_id && $db.bookings.party_room_id == $Booking.party_room_id && $db.bookings.start_ts < $Booking.end_ts && $db.bookings.end_ts > $Booking.start_ts && ($db.bookings.status == "pending_payment" || $db.bookings.status == "deposit_paid" || $db.bookings.status == "paid" || $db.bookings.status == "confirmed" || ($db.bookings.status == "hold" && $db.bookings.hold_expires_at_ts > $now_ts))
+              return = {type: "list"}
+            } as $Conflicts
+          
+            precondition (($Conflicts|count) == 0) {
+              error_type = "inputerror"
+              error = "Sorry, this time slot has since been booked. Please start a new booking."
+            }
+          }
+        }
+      
+        db.get stripe_location_keys {
+          field_name = "location_id"
+          field_value = $Booking.location_id
+        } as $StripeKey
+      
+        precondition ($StripeKey != null && $StripeKey.is_active && $StripeKey.stripe_secret_key_live != "") {
+          error_type = "inputerror"
+          error = "Payment is unavailable for this location"
+        }
+      
+        api.lambda {
+          code = """
+            const b=$var.Booking, option=$input.payment_option==='full'&&b.booking_type==='group_booking'?'full':'deposit';
+            const payment=option==='full'?Math.max(0,b.grand_total_cents-(b.discount_cents||0)):5000;
+            return {payment_type:option,payment_cents:payment,total_cents:payment+150,expires_at:Math.floor(Date.now()/1000)+1860};
+            """
+          timeout = 10
+        } as $Plan
+      
+        var $Current {
+          value = null
+        }
+      
+        conditional {
+          if ($Booking.stripe_session_id != null && $Booking.stripe_session_id != "") {
+            api.request {
+              url = "https://api.stripe.com/v1/checkout/sessions/"
+                |concat:$Booking.stripe_session_id:""
+              method = "GET"
+              headers = []
+                |push:("Authorization: Bearer "
+                  |concat:$StripeKey.stripe_secret_key_live:""
+                )
+            } as $CurrentResponse
+          
+            precondition ($CurrentResponse.response.status == 200) {
+              error = "Could not verify your existing payment link. Please try again shortly."
+            }
+          
+            var $Current {
+              value = $CurrentResponse.response.result
+            }
+          
+            precondition ($Current.status != "complete") {
+              error_type = "inputerror"
+              error = "Payment has already completed or is processing. Please check your confirmation email."
+            }
+          
+            conditional {
+              if ($Current.status == "open" && $Current.amount_total == $Plan.total_cents && $Current.metadata.payment_type == $Plan.payment_type && $Current.expires_at <= $Plan.expires_at) {
+                var $payment_url {
+                  value = $Current.url
+                }
+              
+                var $stripe_session_id {
+                  value = $Current.id
+                }
+              }
+            
+              elseif ($Current.status == "open") {
+                // Close the previous link before creating a replacement.
+                api.request {
+                  url = "https://api.stripe.com/v1/checkout/sessions/"
+                    |concat:$Current.id:""
+                    |concat:"/expire":""
+                  method = "POST"
+                  headers = []
+                    |push:("Authorization: Bearer "
+                      |concat:$StripeKey.stripe_secret_key_live:""
+                    )
+                } as $ExpiredSession
+              
+                precondition ($ExpiredSession.response.status == 200 && $ExpiredSession.response.result.status == "expired") {
+                  error = "Your previous payment link could not be closed. Please try again shortly."
+                }
+              }
+            }
+          }
+        }
+      
+        // Expiry releases a credit. Reacquire it under lock before reusing its discount.
+        conditional {
+          if (($Booking.applied_credit_id|first_notnull:0) > 0) {
+            db.get customer_credits {
+              field_name = "id"
+              field_value = $Booking.applied_credit_id
+              lock = true
+            } as $Credit
+          
+            precondition ($Credit != null && (($Credit.status == "pending" && ($Credit.used_booking_id == $Booking.id || $Credit.used_booking_id == 0)) || $Credit.status == "available")) {
+              error_type = "inputerror"
+              error = "Your discount is no longer available. Please review a new booking before paying."
+            }
+          
+            db.patch customer_credits {
+              field_name = "id"
+              field_value = $Credit.id
+              data = {status: "pending", used_booking_id: $Booking.id}
+            } as $ReservedCredit
+          }
+        }
+      
+        conditional {
+          if ($payment_url == null) {
+            api.request {
+              url = "https://api.stripe.com/v1/checkout/sessions"
+              method = "POST"
+              params = {}
+                |set:"mode":"payment"
+                |set:"payment_method_types[0]":"card"
+                |set:"expires_at":$Plan.expires_at
+                |set:"success_url":("https://booking.morefun.com.au/booking/booking-success?session_id={CHECKOUT_SESSION_ID}&booking_id="|concat:$Booking.id:"")
+                |set:"cancel_url":("https://booking.morefun.com.au/booking/booking-cancelled?booking_cancelled=1&booking_id="|concat:$Booking.id:"")
+                |set:"customer_email":$Booking.customer_email
+                |set:"client_reference_id":$Booking.id
+                |set:"line_items[0][quantity]":1
+                |set:"line_items[0][price_data][currency]":"aud"
+                |set:"line_items[0][price_data][unit_amount]":$Plan.payment_cents
+                |set:"line_items[0][price_data][product_data][name]":"KOKO Booking Payment"
+                |set:"line_items[1][quantity]":1
+                |set:"line_items[1][price_data][currency]":"aud"
+                |set:"line_items[1][price_data][unit_amount]":150
+                |set:"line_items[1][price_data][product_data][name]":"Booking Fee"
+                |set:"metadata[booking_id]":$Booking.id
+                |set:"metadata[location_id]":$Booking.location_id
+                |set:"metadata[package_id]":$Booking.package_id
+                |set:"metadata[payment_type]":$Plan.payment_type
+                |set:"metadata[stripe_mode]":"live"
+                |set:"metadata[deposit_cents]":$Plan.payment_cents
+                |set:"metadata[surcharge_cents]":150
+              headers = []
+                |push:("Authorization: Bearer "
+                  |concat:$StripeKey.stripe_secret_key_live:""
+                )
+                |push:"Stripe-Version: 2026-04-22.dahlia"
+                |push:"Content-Type: application/x-www-form-urlencoded"
+            } as $CreatedSession
+          
+            precondition ($CreatedSession.response.status == 200 && $CreatedSession.response.result.id != null && $CreatedSession.response.result.url != null) {
+              error = "Payment link could not be created. Please try again."
+            }
+          
+            var $Current {
+              value = $CreatedSession.response.result
+            }
+          
+            var $payment_url {
+              value = $Current.url
+            }
+          
+            var $stripe_session_id {
+              value = $Current.id
+            }
+          }
+        }
+      
+        db.patch bookings {
+          field_name = "id"
+          field_value = $Booking.id
+          data = {
+            status                : "pending_payment"
+            stripe_session_id     : $stripe_session_id
+            payment_url           : $payment_url
+            hold_expires_at_ts    : $Current.expires_at * 1000
+            surcharge_cents       : 150
+            checkout_payment_cents: $Plan.payment_cents
+            checkout_total_cents  : $Plan.total_cents
+            checkout_payment_type : $Plan.payment_type
+          }
+        } as $Booking
+      }
+    }
+  }
+
+  response = {
+    error_message    : null
+    booking          : $Booking
+    payment_url      : $payment_url
+    stripe_session_id: $stripe_session_id
+    stripe_mode      : "live"
+  }
+}

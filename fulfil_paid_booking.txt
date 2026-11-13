@@ -1,0 +1,60 @@
+// Serialise resource fulfilment separately from the committed money/rewards.
+function fulfil_paid_booking {
+  input {
+    int booking_id
+  }
+
+  stack {
+    db.transaction {
+      stack {
+        db.get bookings {
+          field_name = "id"
+          field_value = $input.booking_id
+          lock = true
+        } as $Booking
+      
+        conditional {
+          if ($Booking != null && ($Booking.status == "deposit_paid" || $Booking.status == "paid") && $Booking.payment_fulfilment_done != true && $Booking.payment_processed_session_id != null && $Booking.payment_processed_session_id != "") {
+            try_catch {
+              try {
+                function.run reserve_mahjong_rooms {
+                  input = {booking_id: $Booking.id}
+                } as $MahjongHold
+              
+                conditional {
+                  if (($MahjongHold.errors|count) == 0) {
+                    db.patch bookings {
+                      field_name = "id"
+                      field_value = $Booking.id
+                      data = {payment_fulfilment_done: true}
+                    } as $Fulfilled
+                  }
+                }
+              }
+            
+              catch {
+                db.patch bookings {
+                  field_name = "id"
+                  field_value = $Booking.id
+                  data = {
+                    payment_review_reason: "Paid booking resource fulfilment failed; staff action required"
+                  }
+                } as $Failed
+              }
+            }
+          }
+        }
+      }
+    }
+  
+    function.run send_booking_confirmation {
+      input = {
+        booking_id: $input.booking_id
+        automatic : true
+        request_id: ""
+      }
+    } as $Email
+  }
+
+  response = {ok: true}
+}

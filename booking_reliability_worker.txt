@@ -1,0 +1,118 @@
+// RunReminders already runs every five minutes. No new external scheduler.
+function booking_reliability_worker {
+  input {
+  }
+
+  stack {
+    function.run expire_stale_holds as $Expired
+    var $now_ts {
+      value = "now"|to_timestamp
+    }
+  
+    db.query bookings {
+      where = ($db.bookings.status == "deposit_paid" || $db.bookings.status == "paid") && (($db.bookings.payment_processed_session_id != "" && $db.bookings.payment_fulfilment_done != true) || $db.bookings.confirmation_email_status == "queued" || ($db.bookings.confirmation_email_status == "failed" && $db.bookings.confirmation_email_attempts < 5 && $db.bookings.confirmation_email_next_retry_at <= $now_ts))
+      return = {type: "list"}
+    } as $Queued
+  
+    var $processed {
+      value = 0
+    }
+  
+    foreach ($Queued) {
+      each as $QueuedBooking {
+        conditional {
+          if ($processed < 10) {
+            try_catch {
+              try {
+                function.run fulfil_paid_booking {
+                  input = {booking_id: $QueuedBooking.id}
+                } as $Done
+              }
+            
+              catch {
+                var $retry_later {
+                  value = true
+                }
+              }
+            }
+          
+            var $processed {
+              value = $processed + 1
+            }
+          }
+        }
+      }
+    }
+  
+    db.query bookings {
+      where = $db.bookings.payment_review_reason != null && $db.bookings.payment_review_reason != "" && $db.bookings.payment_review_alerted_at == null
+      return = {type: "list"}
+    } as $PaymentReviews
+  
+    foreach ($PaymentReviews) {
+      each as $ReviewBooking {
+        api.request {
+          url = "https://api.resend.com/emails"
+          method = "POST"
+          params = `{from: "KOKO Amusement <booking@mail.morefun.com.au>", to: "marketing@kokoamusement.com.au", subject: "[ACTION NEEDED] Booking payment review #"|concat:$ReviewBooking.id:"", text: "Review booking #"|concat:$ReviewBooking.id:""|concat:". ":""|concat:$ReviewBooking.payment_review_reason:""}`
+          headers = []
+            |push:("Authorization: Bearer "|concat:$env.RESEND_API_KEY:"")
+            |push:"Content-Type: application/json"
+            |push:("Idempotency-Key: koko-payment-review/"|concat:$ReviewBooking.id:"")
+        } as $ReviewAlert
+      
+        conditional {
+          if ($ReviewAlert.response.status >= 200 && $ReviewAlert.response.status < 300) {
+            db.patch bookings {
+              field_name = "id"
+              field_value = $ReviewBooking.id
+              data = {payment_review_alerted_at: $now_ts}
+            } as $ReviewAlerted
+          }
+        }
+      }
+    }
+  
+    db.query bookings {
+      where = ($db.bookings.confirmation_email_status == "bounced" || $db.bookings.confirmation_email_status == "failed_delivery" || ($db.bookings.confirmation_email_status == "failed" && $db.bookings.confirmation_email_attempts >= 3)) && $db.bookings.confirmation_email_alerted_at == null
+      return = {type: "list"}
+    } as $Failures
+  
+    foreach ($Failures) {
+      each as $FailedBooking {
+        api.request {
+          url = "https://api.resend.com/emails"
+          method = "POST"
+          params = ```
+            {
+              from: "KOKO Amusement <booking@mail.morefun.com.au>"
+              to: "marketing@kokoamusement.com.au"
+              subject: "[ACTION NEEDED] Booking confirmation failed #"|concat:$FailedBooking.id:""
+              text: "A paid booking needs email follow-up. Booking #"|concat:$FailedBooking.id:""|concat:". Status: ":""|concat:$FailedBooking.confirmation_email_status:""|concat:". Open the staff booking page, check the customer's email and resend after correcting the cause.":""
+            }
+            ```
+          headers = []
+            |push:("Authorization: Bearer "|concat:$env.RESEND_API_KEY:"")
+            |push:"Content-Type: application/json"
+            |push:("Idempotency-Key: koko-confirmation-alert/"
+              |concat:$FailedBooking.id:""
+              |concat:"/":""
+              |concat:($FailedBooking.confirmation_email_revision|first_notnull:0):""
+            )
+        } as $Alert
+      
+        conditional {
+          if ($Alert.response.status >= 200 && $Alert.response.status < 300) {
+            db.patch bookings {
+              field_name = "id"
+              field_value = $FailedBooking.id
+              data = {confirmation_email_alerted_at: $now_ts}
+            } as $Alerted
+          }
+        }
+      }
+    }
+  }
+
+  response = {processed: $processed}
+}

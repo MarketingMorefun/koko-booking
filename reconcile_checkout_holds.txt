@@ -1,0 +1,115 @@
+// Verify expiration with Stripe before releasing resources. Network failures keep
+// the reservation, and the next 5-minute worker retries (fail closed).
+function reconcile_checkout_holds {
+  input {
+  }
+
+  stack {
+    var $now_ts {
+      value = "now"|to_timestamp
+    }
+  
+    db.query bookings {
+      where = $db.bookings.status == "pending_payment" && ($db.bookings.hold_expires_at_ts == null || $db.bookings.hold_expires_at_ts <= $now_ts)
+      return = {type: "list"}
+    } as $Candidates
+  
+    foreach ($Candidates) {
+      each as $Candidate {
+        try_catch {
+          try {
+            db.transaction {
+              stack {
+                db.get bookings {
+                  field_name = "id"
+                  field_value = $Candidate.id
+                  lock = true
+                } as $Booking
+              
+                conditional {
+                  if ($Booking.status == "pending_payment" && $Booking.stripe_session_id != "") {
+                    db.get stripe_location_keys {
+                      field_name = "location_id"
+                      field_value = $Booking.location_id
+                    } as $StripeKey
+                  
+                    api.request {
+                      url = "https://api.stripe.com/v1/checkout/sessions/"
+                        |concat:$Booking.stripe_session_id:""
+                      method = "GET"
+                      headers = []
+                        |push:("Authorization: Bearer "
+                          |concat:$StripeKey.stripe_secret_key_live:""
+                        )
+                    } as $StripeResponse
+                  
+                    conditional {
+                      if ($StripeResponse.response.status == 200) {
+                        var $Session {
+                          value = $StripeResponse.response.result
+                        }
+                      
+                        conditional {
+                          if ($Session.status == "open" && (($Session.created * 1000) + 1860000) <= $now_ts) {
+                            api.request {
+                              url = "https://api.stripe.com/v1/checkout/sessions/"
+                                |concat:$Session.id:""
+                                |concat:"/expire":""
+                              method = "POST"
+                              headers = []
+                                |push:("Authorization: Bearer "
+                                  |concat:$StripeKey.stripe_secret_key_live:""
+                                )
+                            } as $ExpireResponse
+                          
+                            conditional {
+                              if ($ExpireResponse.response.status == 200) {
+                                var $Session {
+                                  value = $ExpireResponse.response.result
+                                }
+                              }
+                            }
+                          }
+                        }
+                      
+                        conditional {
+                          if ($Session.status == "expired" || ($Session.status == "complete" && $Session.payment_status == "paid")) {
+                            function.run apply_stripe_checkout {
+                              input = {
+                                booking_id: $Booking.id
+                                session   : $Session
+                                event_id  : "reconcile:"|concat:$Session.id:""|concat:$Session.status:":"
+                                event_type: "reconciliation"
+                              }
+                            } as $Result
+                          }
+                        
+                          elseif ($Session.status == "open") {
+                            db.patch bookings {
+                              field_name = "id"
+                              field_value = $Booking.id
+                              data = {hold_expires_at_ts: $Session.created * 1000 + 1860000}
+                            } as $Updated
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        
+          catch {
+            // Never free a room while Stripe payment state is unknown.
+            var $retry_later {
+              value = true
+            }
+          }
+        }
+      }
+    }
+  }
+
+  response = {checked: $Candidates|count}
+}

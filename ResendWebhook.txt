@@ -1,0 +1,89 @@
+query ResendWebhook verb=POST {
+  api_group = "KOKO Booking"
+
+  input {
+  }
+
+  stack {
+    util.get_raw_input {
+      encoding = "none"
+      exclude_middleware = true
+    } as $raw_body
+  
+    db.get booking_notification_settings {
+      field_name = "service"
+      field_value = "resend"
+    } as $Settings
+  
+    api.lambda {
+      code = """
+        const raw=$var.raw_body, secret=$var.Settings?.webhook_secret;
+        const h=Object.fromEntries(Object.entries($env.$http_headers||{}).map(([k,v])=>[k.toLowerCase(),v]));
+        if(typeof raw!=='string'||!secret||!h['svix-id']||!/^\d+$/.test(h['svix-timestamp']||'')||Math.abs(Date.now()/1000-Number(h['svix-timestamp']))>300) return {ok:false};
+        const expected=crypto.createHmac('sha256',Buffer.from(secret.replace(/^whsec_/,''),'base64')).update(h['svix-id']+'.'+h['svix-timestamp']+'.'+raw).digest();
+        const ok=String(h['svix-signature']||'').split(' ').some(s=>{const [v,b64]=s.split(',');if(v!=='v1'||!b64)return false;const b=Buffer.from(b64,'base64');return b.length===expected.length&&crypto.timingSafeEqual(b,expected);});
+        try{return ok?{ok:true,event:JSON.parse(raw)}:{ok:false};}catch{return {ok:false};}
+        """
+      timeout = 10
+    } as $Verified
+  
+    precondition ($Verified.ok) {
+      error_type = "accessdenied"
+      error = "Invalid email webhook signature"
+    }
+  
+    precondition ($Verified.event.data.email_id != null && $Verified.event.data.email_id != "") {
+      error_type = "inputerror"
+      error = "Missing email identifier"
+    }
+  
+    db.query bookings {
+      where = $db.bookings.confirmation_email_id == $Verified.event.data.email_id
+      return = {type: "single"}
+    } as $Found
+  
+    conditional {
+      if ($Found != null) {
+        db.transaction {
+          stack {
+            db.get bookings {
+              field_name = "id"
+              field_value = $Found.id
+              lock = true
+            } as $Booking
+          
+            api.lambda {
+              code = """
+                const b=$var.Booking,e=$var.Verified.event;
+                const at=Date.parse(e.created_at||'');
+                const status={'email.delivered':'delivered','email.bounced':'bounced','email.failed':'failed_delivery','email.delivery_delayed':'delayed'}[e.type];
+                if(!status||!Number.isFinite(at)||at<Number(b.confirmation_email_event_at||0))return null;
+                // A delayed/sent event must never downgrade an observed terminal outcome.
+                if(['bounced','failed_delivery'].includes(b.confirmation_email_status)&&status==='delayed')return null;
+                if(b.confirmation_email_status==='delivered'&&status==='delayed')return null;
+                return {status,at,error:status==='bounced'||status==='failed_delivery'?String(e.data?.bounce?.message||e.data?.failed?.reason||e.type).slice(0,500):''};
+                """
+              timeout = 10
+            } as $Delivery
+          
+            conditional {
+              if ($Delivery != null && $Booking.confirmation_email_id == $Verified.event.data.email_id) {
+                db.patch bookings {
+                  field_name = "id"
+                  field_value = $Booking.id
+                  data = {
+                    confirmation_email_status  : $Delivery.status
+                    confirmation_email_event_at: $Delivery.at
+                    confirmation_email_error   : $Delivery.error
+                  }
+                } as $Updated
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  response = {received: true}
+}

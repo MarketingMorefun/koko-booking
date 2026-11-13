@@ -1,0 +1,68 @@
+// Called only after Stripe has confirmed that this exact session is expired.
+// Keep recoverable carts for 24 hours, but release the room and credit now.
+function release_booking_checkout {
+  input {
+    int booking_id
+    text session_id
+  }
+
+  stack {
+    db.transaction {
+      stack {
+        db.get bookings {
+          field_name = "id"
+          field_value = $input.booking_id
+          lock = true
+        } as $Booking
+      
+        conditional {
+          if ($Booking != null && $Booking.stripe_session_id == $input.session_id && ($Booking.status == "hold" || $Booking.status == "pending_payment")) {
+            conditional {
+              if (($Booking.applied_credit_id|first_notnull:0) > 0) {
+                db.get customer_credits {
+                  field_name = "id"
+                  field_value = $Booking.applied_credit_id
+                  lock = true
+                } as $Credit
+              
+                conditional {
+                  if ($Credit != null && $Credit.status == "pending" && ($Credit.used_booking_id == $Booking.id || $Credit.used_booking_id == 0)) {
+                    db.patch customer_credits {
+                      field_name = "id"
+                      field_value = $Credit.id
+                      data = {status: "available", used_booking_id: 0}
+                    } as $ReleasedCredit
+                  }
+                }
+              }
+            }
+          
+            var $status {
+              value = "hold"
+            }
+          
+            conditional {
+              if ($Booking.created_at < ("now"|to_timestamp|add_ms_to_timestamp:-86400000)) {
+                var $status {
+                  value = "expired"
+                }
+              }
+            }
+          
+            db.patch bookings {
+              field_name = "id"
+              field_value = $Booking.id
+              data = {
+                status            : $status
+                hold_expires_at_ts: 0
+                payment_url       : ""
+              }
+            } as $Booking
+          }
+        }
+      }
+    }
+  }
+
+  response = {ok: true}
+}

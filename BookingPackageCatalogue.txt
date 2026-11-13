@@ -1,0 +1,25 @@
+query BookingPackageCatalogue verb=GET {
+  api_group = "KOKO Booking"
+
+  input {
+  }
+
+  stack {
+    db.query Packages {
+      where = $db.Packages.is_active == true
+      return = {type: "list"}
+      output = [
+        "id"
+        "Name"
+        "slug"
+        "free_play_minutes"
+        "claw_games"
+        "feature_games"
+        "preloaded_tickets"
+        "features_json"
+      ]
+    } as $Packages
+  }
+
+  response = {packages: $Packages}
+}
