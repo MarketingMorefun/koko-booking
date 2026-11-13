@@ -69,13 +69,21 @@ function mailchimp_subscribe {
           value = $input.store|first_notnull:""|trim
         }
       
-        // Phone in the same +61 format SyncMailchimp.gs uses
-        // (0412345678 -> +61412345678). Anything else is skipped rather
-        // than risk Mailchimp rejecting the whole contact.
+        // Phone in the same +61 format SyncMailchimp.gs uses: 0412345678,
+        // 412345678 (bookings.customer_phone is a number column, so the
+        // leading 0 is gone) and 61412345678 all become +61412345678.
+        // Anything else is skipped rather than risk Mailchimp rejecting the
+        // whole contact. No regex: Xano's regex filter returned null here.
         var $phone_digits {
           value = $input.phone
             |first_notnull:""
-            |regex_replace:"/[^0-9]+/":""
+            |to_text
+            |replace:" ":""
+            |replace:"-":""
+            |replace:"+":""
+            |replace:"(":""
+            |replace:")":""
+            |replace:".":""
         }
       
         var $phone {
@@ -83,14 +91,20 @@ function mailchimp_subscribe {
         }
       
         conditional {
-          if (($phone_digits|strlen) == 10 && ($phone_digits|substr:0:1) == "0") {
+          if (($phone_digits|strlen) == 10 && ($phone_digits|substr:0:2) == "04") {
             var $phone {
               value = "+61"
                 |concat:($phone_digits|substr:1:9):""
             }
           }
         
-          elseif (($phone_digits|strlen) == 11 && ($phone_digits|substr:0:2) == "61") {
+          elseif (($phone_digits|strlen) == 9 && ($phone_digits|substr:0:1) == "4") {
+            var $phone {
+              value = "+61"|concat:$phone_digits:""
+            }
+          }
+        
+          elseif (($phone_digits|strlen) == 11 && ($phone_digits|substr:0:3) == "614") {
             var $phone {
               value = "+"|concat:$phone_digits:""
             }

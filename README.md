@@ -183,6 +183,7 @@ shows a visible message instead of failing silently.
 - **Xano's `where=` clause can't apply filters (e.g. `|trim`, `|lower`) to a database
   column** — only to literal/variable values. Do that transform in memory instead
   (`array.filter`/`array.find` after a plain `db.query`).
+- **`bookings.customer_phone` is a number column** — the leading `0` is gone (`412345678`), even though the forms send `0412345678`. Normalise phones for both shapes. And **`|regex_replace` returned null** in our Xano (it saves fine, then silently blanks the value) — strip characters with chained `|replace` instead.
 - **`array.slice` is not a real Xano function** — batch a `foreach` with a manually
   incremented counter variable + `if (counter < limit)` instead.
 - Changing the **`$1.50` surcharge / `$50` deposit / `$30` discount** means editing the
