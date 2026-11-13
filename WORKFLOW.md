@@ -84,7 +84,7 @@ cancelled / refunded   员工在后台操作
 
 | 频率 | 由谁执行 | 做什么 |
 |---|---|---|
-| 每 5 分钟 | Apps Script `Reminders.gs` | 调用 `RunReminders`，先做付款过期对账和确认邮件补救，再发弃单提醒 |
+| 每 5 分钟 | Apps Script `Reminders.gs` | 调用 `RunReminders`：付款过期对账、确认邮件补救、感谢／明年再订邮件，然后发弃单提醒 |
 | 每小时 | Apps Script `SyncBookings.gs` | 同步表格、日历，给门店发邮件 |
 | 每天凌晨 3 点 | Apps Script `BirthdaySync.gs` | 给会员发生日礼品码，同步 Members 表格 |
 | 每次有人下单 | Xano `expire_stale_holds`（每 5 分钟也执行） | 先核对付款链接到期，再把超过 24 小时未付的购物车改为 `expired` |
@@ -112,12 +112,16 @@ cancelled / refunded   员工在后台操作
 | 2 | **重发确认邮件** | 员工在后台点「Resend confirmation email」（需要员工密钥） | 和第 1 封一样 | [ResendConfirmationEmail.txt](ResendConfirmationEmail.txt) |
 | 3 | **提醒 1**（弃单） | 订单生成 15 分钟以上、客户已离开页面 15 分钟、仍未付款 | `Your KOKO booking isn't confirmed yet (#ID)` | [RunReminders.txt](RunReminders.txt) |
 | 4 | **提醒 2**（最后机会） | 订单生成 20 小时、仍未付款 | `Last chance — your KOKO booking expires in 4 hours` | [RunReminders.txt](RunReminders.txt) |
-| 5 | 推荐码补发 | 一次性任务，已经跑完，现在会拒绝所有调用 | `You've got a $30 referral code from KOKO Amusement` | [BackfillReferralCodesAndCredits.txt](BackfillReferralCodesAndCredits.txt) |
+| 5 | **感谢邮件** | 派对／团体来访后第二天早上 9 点（悉尼）之后，只发 11 月 13 日及以后的订单 | 生日单：`Thank you for celebrating {孩子名}'s birthday at KOKO! 🎉`<br>团体单：`Thanks for visiting KOKO Amusement, {联系人}!` | [send_followup_emails.txt](send_followup_emails.txt) |
+| 6 | **明年再订**（只发生日单） | 去年派对日期前 6 周早上 9 点；这一年已经又订过的不发 | `{孩子名}'s birthday is coming up — celebrate at KOKO again? 🎂` | [send_followup_emails.txt](send_followup_emails.txt) |
+| 7 | 推荐码补发 | 一次性任务，已经跑完，现在会拒绝所有调用 | `You've got a $30 referral code from KOKO Amusement` | [BackfillReferralCodesAndCredits.txt](BackfillReferralCodesAndCredits.txt) |
 
 - **确认邮件的内容：** 订单详情、加购分项、付款汇总（含折扣行、已付金额、余额）、改期须知、定金不退说明（付清的单会换掉这段）、生日邀请函下载区（团体单不显示）、推荐码卡片、客户资料。
 - **确认邮件发送失败时：** `confirmation_email_sent_at` 保持空白，员工后台显示「Confirmation email: —」，后台记录错误及尝试次数，每隔至少 5 分钟自动重试，最多 5 次；失败达到 3 次或永久退信会通知负责人。员工可筛选 Email follow-up，核对后重发。Resend 接收为 accepted；投递回调启用后才会显示 delivered／bounced 等真实状态。重发接口要求 ADMIN_KEY。
 - **提醒邮件** 只有在 Resend 收下后才会标记为已发送，失败的会在下一轮重试。
 - **联系邮箱** 统一写的是 `marketing@kokoamusement.com.au`。
+- **所有客户邮件都是 George 版**，由 [email-templates/](email-templates/) 生成，图片在 [email-assets/](email-assets/)。要改邮件就改生成脚本，不要直接改 Xano 里的 HTML。
+- **感谢邮件和明年再订**：在 Mailchimp 退订的客户自动跳过；有未用的 $30 抵扣才显示抵扣卡片；有推荐码才显示推荐码；去年那家店没有可用派对房时，按钮不预选门店。可以用只预览的 `RunFollowUps` 接口查看哪些邮件即将发出。
 - **生日礼品码邮件** 由 Mailchimp 那边的自动化发出，不在这个仓库里。`BirthdaySync.gs` 只负责写入 `CODE` 字段。
 
 ### B. 发给门店的邮件（每小时由 SyncBookings 发）

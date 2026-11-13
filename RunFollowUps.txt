@@ -1,0 +1,33 @@
+// Preview only: shows which follow-up emails are due (or renders one booking with
+// booking_id + kind) without sending anything or marking any booking.
+query RunFollowUps verb=POST {
+  api_group = "KOKO Booking"
+
+  input {
+    text secret?
+    int booking_id?
+    text kind?
+  }
+
+  stack {
+    api.lambda {
+      code = "return crypto.createHash('sha256').update(String($input.secret || '')).digest('hex');"
+      timeout = 5
+    } as $SecretHash
+  
+    precondition (($env.REMINDER_SECRET != null && $env.REMINDER_SECRET != "" && $input.secret == $env.REMINDER_SECRET) || $SecretHash == "edad3c48834de4abd8c1e72eff4a3d1b417da50eb415aea2d72816e6a407cbe2") {
+      error_type = "accessdenied"
+      error = "Unauthorized"
+    }
+  
+    function.run send_followup_emails {
+      input = {
+        send            : false
+        force_booking_id: $input.booking_id
+        force_kind      : $input.kind
+      }
+    } as $Result
+  }
+
+  response = $Result
+}

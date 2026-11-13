@@ -85,6 +85,7 @@ the Xano UI since the repo was last synced. Xano reformats on save (and prefers
 | `ResendWebhook.txt` | `POST /ResendWebhook` | Resend delivery events (Svix-signed; secret in table `booking_notification_settings`, row `service = resend`). Updates `confirmation_email_status` to `delivered` / `bounced` / `failed_delivery` / `delayed`, never downgrading a final outcome. |
 | `Availability.txt` | `POST /Availability` | Packages and free party-room slots for a venue/date/guest count (read-only). A venue with no active party room (Burwood's is switched off, Haymarket has none) returns no room slots. |
 | `BookingPackageCatalogue.txt` | `GET /BookingPackageCatalogue` | Active packages with their feature fields (read-only). |
+| `RunFollowUps.txt` | `POST /RunFollowUps` (secret-protected, preview only) | Shows which thank-you / next-year emails are due, or renders one booking (`booking_id` + `kind`), without sending or marking anything. See `email-templates/README.md`. |
 | `VerifyBookingConversion.txt` | `POST /VerifyBookingConversion` | Read-only check that a booking ID + Stripe session ID really paid a live deposit — for conversion tracking on the success page. Returns no customer details. |
 | `BookingSheetExport.txt` | `GET /BookingSheetExport?key=` (secret-protected) | Returns every booking row for `SyncBookings.gs` to write into the Booking Master sheet. Contains all customer PII — the key is the `SHEET_EXPORT_KEY` workspace variable, never a literal. |
 | `NewsletterSignup.txt` | `POST /NewsletterSignup?key=` (Webflow webhook) | Target of the Webflow `form_submission` webhook (filter: form name "Email Sub", the homepage newsletter form). Checks `key` against workspace variable `WEBFLOW_HOOK_KEY`, then adds the signup to Mailchimp tagged `website newsletter`. Always answers 200 so Webflow doesn't retry. |
@@ -104,6 +105,7 @@ the Xano UI since the repo was last synced. Xano reformats on save (and prefers
 | `booking_reliability_worker.txt` | Runs from `RunReminders` every 5 min: `expire_stale_holds`, up to 10 queued/failed paid bookings through `fulfil_paid_booking`, and `[ACTION NEEDED]` emails to marketing for payment reviews and confirmations that bounced or failed 3+ times. |
 | `reconcile_checkout_holds.txt` | For `pending_payment` bookings past their checkout expiry: asks Stripe for the session state, expires stale open sessions, and settles or releases through `apply_stripe_checkout`. If Stripe can't be reached the room stays held (fails closed). |
 | `release_booking_checkout.txt` | After Stripe confirms a session expired: frees the reserved credit and room (back to `hold`, or `expired` once 24 h old). |
+| `send_followup_emails.txt` | Thank-you email at 9am Sydney the morning after a paid visit (events from 13 Nov 2026 on, within 14 days) and a next-year reminder at 9am six weeks before last year's birthday-party date (skipped if the same email has booked again; venue pre-selected only if it still has an active party room). Skips anyone unsubscribed in Mailchimp, sends with a Resend idempotency key, max 10 per run, and only then sets `thankyou_sent_at` / `anniversary_sent_at` (skips are recorded in `followup_skip_reason`). Generated from `email-templates/`. |
 | `expire_stale_holds.txt` | Called via `function.run` from `CreateBooking`/`CreateGroupBooking`. Sweeps `hold`/`pending_payment` bookings older than 24h to `expired` (must stay 24h — the reminder emails at 15 min/20h rely on the booking still reading `hold`/`pending_payment` that whole window). Releases any credit that booking had reserved back to `available` so it isn't stranded. |
 
 ## Google Apps Script
@@ -136,6 +138,10 @@ SURCHARGE_CENTS    = 150    // $1.50 booking fee (shown as "Booking fee", not "c
 PAYABLE_NOW_CENTS  = 5150   // $51.50 charged now (deposit + surcharge)
 MIN_ADVANCE_MS     = 259_200_000   // must book ≥ 72h ahead
 ```
+
+## Emails (George design)
+
+All customer emails (confirmation, both reminders, thank-you, next-year reminder) are generated from `email-templates/` and use George artwork from `email-assets/` via jsDelivr at a fixed commit. Edit the generator, not the HTML inside the Xano scripts — see `email-templates/README.md`.
 
 ## Staff admin page
 

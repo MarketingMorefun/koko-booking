@@ -1,0 +1,307 @@
+// Thank-you email (9am Sydney the morning after the visit) and next-year birthday
+// reminder (9am, 6 weeks before last year's party date). Runs from RunReminders every
+// 5 minutes; RunFollowUps calls it with send = false to preview without sending.
+// Skips anyone unsubscribed in Mailchimp. Marks a booking only once Resend accepts the
+// email (or when it is skipped), so nothing is sent twice.
+function send_followup_emails {
+  input {
+    bool send?
+    int force_booking_id?
+    text force_kind?
+  }
+
+  stack {
+    var $now_ts {
+      value = "now"|to_timestamp
+    }
+  
+    var $since {
+      value = $now_ts|add_ms_to_timestamp:-34560000000
+    }
+  
+    db.query bookings {
+      where = ($db.bookings.status == "deposit_paid" || $db.bookings.status == "paid" || $db.bookings.status == "confirmed") && $db.bookings.start_ts > $since && ($db.bookings.thankyou_sent_at == null || $db.bookings.anniversary_sent_at == null)
+      return = {type: "list"}
+    } as $Bookings
+  
+    db.query bookings {
+      where = ($db.bookings.status == "deposit_paid" || $db.bookings.status == "paid" || $db.bookings.status == "confirmed") && $db.bookings.created_at > $since
+      return = {type: "list"}
+      output = ["id", "customer_email", "status", "created_at"]
+    } as $Recent
+  
+    db.query customer_credits {
+      where = $db.customer_credits.status == "available"
+      return = {type: "list"}
+      output = ["customer_email", "status"]
+    } as $Credits
+  
+    db.query Locations {
+      return = {type: "list"}
+      output = ["id", "Name", "slug", "is_active"]
+    } as $Locations
+  
+    db.query Packages {
+      return = {type: "list"}
+      output = ["id", "Name"]
+    } as $Packages
+  
+    db.query party_rooms {
+      return = {type: "list"}
+      output = ["Location_id", "is_active"]
+    } as $Rooms
+  
+    var $Forced {
+      value = null
+    }
+  
+    conditional {
+      if (($input.force_booking_id|first_notnull:0) > 0) {
+        db.get bookings {
+          field_name = "id"
+          field_value = $input.force_booking_id
+        } as $Forced
+      }
+    }
+  
+    api.lambda {
+      code = """
+          // Decides which follow-up emails are due and renders them. Pure: no network, no DB.
+          // Inputs ($var): Bookings, Recent, Credits, Locations, Packages, Rooms, Forced; ($input): force_kind.
+          const T = {"thank_you_html": "<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><style>@media only screen and (max-width: 520px) { .kk-txt { text-align: center !important; } .kk-outer { padding: 16px 8px !important; } .kk-card { padding: 20px 14px 26px !important; } .kk-box { padding: 18px 14px !important; } }</style></head><body style='margin:0;padding:0;background:#FFFDF9;'><div class='kk-outer' style='max-width:680px;margin:0 auto;padding:28px 20px;background:#FFFDF9;font-family:Arial,sans-serif;color:#2F241C;'><div class='kk-card' style='background:#ffffff;border:1px solid #E8DDCC;border-radius:24px;padding:28px 24px 34px;'><div class='kk-hero' style='background:#FFF4CC;border-radius:20px;padding:22px 16px 0;margin:0 0 26px;text-align:center;overflow:hidden;'><div style='display:inline-block;background:#ffffff;border:2px solid #221D16;border-radius:16px;padding:9px 18px;font-weight:900;font-size:16px;color:#221D16;box-shadow:3px 3px 0 #221D16;'>{{BUBBLE}}</div><div style='width:0;height:0;margin:0 auto 6px;border-left:10px solid transparent;border-right:10px solid transparent;border-top:12px solid #221D16;'></div><img src='https://cdn.jsdelivr.net/gh/MarketingMorefun/koko-booking@57b1895/email-assets/george-waving-heart.png' width='200' alt='George waving from a heart' style='width:200px;max-width:100%;height:auto;display:block;border:0;margin:0 auto;'></div><div style='text-align:center;margin-bottom:8px;'><div style='margin-bottom:14px;'><div style='display:inline-block;padding:9px 16px;border-radius:999px;background:#FFF3DF;color:#B86816;font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;line-height:1;'>Thank You</div></div><h1 style='margin:0 0 12px;font-size:30px;line-height:1.15;color:#2F241C;'>{{HEADING}}</h1><p style='margin:0;color:#7b6a58;font-size:16px;line-height:1.6;'>{{INTRO}}</p></div>{{CREDIT_BLOCK}}{{REFERRAL_BLOCK}}<div class='kk-box' style='background:#faf6ee;border:1px solid #E8DDCC;border-radius:18px;padding:22px;margin:24px 0;'><div style='text-align:center;font-size:0;'><div style='display:inline-block;vertical-align:middle;width:120px;margin:0 8px 12px;'><img src='https://cdn.jsdelivr.net/gh/MarketingMorefun/koko-booking@57b1895/email-assets/george-tablet.png' width='93' alt='George holding a tablet' style='width:93px;max-width:100%;height:auto;display:block;border:0;margin:0 auto;'></div><div class='kk-txt' style='display:inline-block;vertical-align:middle;width:100%;max-width:400px;text-align:left;font-size:14px;'><div style='font-size:18px;letter-spacing:2px;color:#F2A93B;margin-bottom:4px;'>★★★★★</div><h2 style='margin:0 0 6px;font-size:18px;color:#2F241C;'>Had a great time?</h2><p style='margin:0 0 14px;color:#7b6a58;font-size:14px;line-height:1.6;'>A quick Google review takes less than a minute and helps {{REVIEW_WHO}} find us. George reads every one!</p><a href='{{REVIEW_URL}}' style='display:inline-block;background:#FFF7EB;color:#B86816;text-decoration:none;font-size:14px;font-weight:900;padding:12px 18px;border-radius:12px;border:2px solid #F2B36F;white-space:nowrap;'>Leave a Google review</a></div></div></div>{{NEXT_YEAR_BLOCK}}<div style='text-align:center;margin:30px 0 8px;'><a href='{{BOOK_URL}}' style='display:inline-block;background:#F5D949;border:2px solid #221D16;box-shadow:4px 4px 0 #221D16;color:#221D16;text-decoration:none;font-size:16px;font-weight:900;padding:16px 36px;border-radius:16px;'>{{BOOK_LABEL}}</a></div><p style='font-size:15px;line-height:1.7;color:#2F241C;margin:28px 0 0;'>Thanks again,<br><strong>George &amp; the KOKO Amusement team</strong></p></div><p style='text-align:center;color:#9A8B7C;font-size:12px;line-height:1.6;margin:18px 0 0;'>Questions? Contact <a href='mailto:marketing@kokoamusement.com.au' style='color:#B86816;text-decoration:none;font-weight:700;'>marketing@kokoamusement.com.au</a><br>{{WHY}} <a href='mailto:marketing@kokoamusement.com.au?subject=Unsubscribe' style='color:#9A8B7C;'>Unsubscribe</a></p></div></body></html>", "anniversary_html": "<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><style>@media only screen and (max-width: 520px) { .kk-txt { text-align: center !important; } .kk-outer { padding: 16px 8px !important; } .kk-card { padding: 20px 14px 26px !important; } .kk-box { padding: 18px 14px !important; } }</style></head><body style='margin:0;padding:0;background:#FFFDF9;'><div class='kk-outer' style='max-width:680px;margin:0 auto;padding:28px 20px;background:#FFFDF9;font-family:Arial,sans-serif;color:#2F241C;'><div class='kk-card' style='background:#ffffff;border:1px solid #E8DDCC;border-radius:24px;padding:28px 24px 34px;'><div class='kk-hero' style='background:#FFF4CC;border-radius:20px;padding:22px 16px 0;margin:0 0 26px;text-align:center;overflow:hidden;'><div style='display:inline-block;background:#ffffff;border:2px solid #221D16;border-radius:16px;padding:9px 18px;font-weight:900;font-size:16px;color:#221D16;box-shadow:3px 3px 0 #221D16;'>Party time again? 🎈</div><div style='width:0;height:0;margin:0 auto 6px;border-left:10px solid transparent;border-right:10px solid transparent;border-top:12px solid #221D16;'></div><img src='https://cdn.jsdelivr.net/gh/MarketingMorefun/koko-booking@57b1895/email-assets/george-happy-birthday.png' width='260' alt='George celebrating with balloons, presents and a birthday cake' style='width:260px;max-width:100%;height:auto;display:block;border:0;margin:0 auto;'></div><div style='text-align:center;margin-bottom:8px;'><div style='margin-bottom:14px;'><div style='display:inline-block;padding:9px 16px;border-radius:999px;background:#FFF3DF;color:#B86816;font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;line-height:1;'>Birthday Reminder</div></div><h1 style='margin:0 0 12px;font-size:30px;line-height:1.15;color:#2F241C;'>{{HEADING}}</h1><p style='margin:0;color:#7b6a58;font-size:16px;line-height:1.6;'>{{INTRO}}</p></div><div class='kk-box' style='background:#faf6ee;border:1px solid #E8DDCC;border-radius:18px;padding:22px;margin:24px 0;'><h2 style='margin:0 0 12px;font-size:18px;color:#2F241C;'>Last year's party</h2><table role='presentation' style='width:100%;border-collapse:collapse;font-size:15px;'><tr><td style='padding:8px 0;color:#7b6a58;'>Location</td><td style='padding:8px 0;text-align:right;font-weight:800;color:#2F241C;'>{{LOCATION}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Date</td><td style='padding:8px 0;text-align:right;font-weight:800;color:#2F241C;'>{{PARTY_DATE}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Package</td><td style='padding:8px 0;text-align:right;font-weight:800;color:#2F241C;'>{{PACKAGE}}</td></tr><tr><td style='padding:8px 0;color:#7b6a58;'>Guests</td><td style='padding:8px 0;text-align:right;font-weight:800;color:#2F241C;'>{{GUESTS}}</td></tr></table></div>{{CREDIT_BLOCK}}<div style='text-align:center;margin:30px 0 8px;'><a href='{{BOOK_URL}}' style='display:inline-block;background:#F5D949;border:2px solid #221D16;box-shadow:4px 4px 0 #221D16;color:#221D16;text-decoration:none;font-size:16px;font-weight:900;padding:16px 36px;border-radius:16px;'>{{BOOK_LABEL}}</a><p style='margin:14px 0 0;color:#9A8B7C;font-size:12.5px;'>{{BOOK_SUB}}</p></div>{{REFERRAL_BLOCK}}<p style='font-size:15px;line-height:1.7;color:#2F241C;margin:28px 0 0;'>Hope to see you soon,<br><strong>George &amp; the KOKO Amusement team</strong></p></div><p style='text-align:center;color:#9A8B7C;font-size:12px;line-height:1.6;margin:18px 0 0;'>Questions? Contact <a href='mailto:marketing@kokoamusement.com.au' style='color:#B86816;text-decoration:none;font-weight:700;'>marketing@kokoamusement.com.au</a><br>You're receiving this because you booked a birthday party at KOKO Amusement last year. <a href='mailto:marketing@kokoamusement.com.au?subject=Unsubscribe' style='color:#9A8B7C;'>Unsubscribe</a></p></div></body></html>", "credit_block": "<div class='kk-box' style='background:#EAF8EF;border:1px solid #BFE5CC;border-radius:18px;padding:22px;margin:24px 0;'><div style='text-align:center;font-size:0;'><div style='display:inline-block;vertical-align:middle;width:120px;margin:0 8px 12px;'><img src='https://cdn.jsdelivr.net/gh/MarketingMorefun/koko-booking@57b1895/email-assets/george-gift-cheer.png' width='90' alt='George cheering on a gift box' style='width:90px;max-width:100%;height:auto;display:block;border:0;margin:0 auto;'></div><div class='kk-txt' style='display:inline-block;vertical-align:middle;width:100%;max-width:400px;text-align:left;font-size:14px;'><div style='font-size:12px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#2F8F5B;margin-bottom:6px;'>{{CREDIT_LABEL}}</div><div style='font-size:32px;font-weight:900;color:#2F241C;line-height:1;margin-bottom:8px;'>$30 off</div><p style='margin:0 0 0px;color:#4F6B57;font-size:14px;line-height:1.6;'>{{CREDIT_TEXT}}</p></div></div></div>", "referral_block": "<div class='kk-box' style='background:#FFFBF5;border:2px dashed #221D16;border-radius:18px;padding:22px;margin:24px 0;'><div style='text-align:center;font-size:0;'><div style='display:inline-block;vertical-align:middle;width:120px;margin:0 8px 12px;'><img src='https://cdn.jsdelivr.net/gh/MarketingMorefun/koko-booking@57b1895/email-assets/george-selfie.png' width='120' alt='George taking a selfie' style='width:120px;max-width:100%;height:auto;display:block;border:0;margin:0 auto;'></div><div class='kk-txt' style='display:inline-block;vertical-align:middle;width:100%;max-width:400px;text-align:left;font-size:14px;'><div style='display:inline-block;padding:4px 12px;border-radius:999px;background:#F5D949;border:1px solid #221D16;font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#221D16;margin-bottom:10px;'>Refer a Friend</div><p style='margin:0 0 12px;color:#2F241C;font-size:14px;line-height:1.6;'>{{REFERRAL_LEAD}} Share your code — when a friend books their first KOKO party or group event with it, they get $30 off, and you get another $30 off.</p><div style='display:inline-block;padding:8px 16px;border:2px dashed #221D16;border-radius:12px;background:#ffffff;font-size:18px;font-weight:900;letter-spacing:0.05em;color:#221D16;margin-bottom:10px;white-space:nowrap;'>{{REFERRAL_CODE}}</div><div><a href='{{REFERRAL_CARD_URL}}' style='display:inline-block;padding:9px 18px;border:2px solid #221D16;border-radius:14px;background:#F5D949;box-shadow:3px 3px 0 #221D16;font-weight:800;font-size:13px;color:#221D16;text-decoration:none;'>View &amp; print your code</a></div></div></div></div>", "next_year_block": "<div class='kk-box' style='background:#FFF7EB;border:1px solid #F4D7B5;border-radius:18px;padding:22px;margin:24px 0;'><div style='text-align:center;font-size:0;'><div style='display:inline-block;vertical-align:middle;width:120px;margin:0 8px 12px;'><img src='https://cdn.jsdelivr.net/gh/MarketingMorefun/koko-booking@57b1895/email-assets/george-cake.png' width='116' alt='George holding a birthday cake' style='width:116px;max-width:100%;height:auto;display:block;border:0;margin:0 auto;'></div><div class='kk-txt' style='display:inline-block;vertical-align:middle;width:100%;max-width:400px;text-align:left;font-size:14px;'><p style='margin:0 0 0px;color:#7b6a58;font-size:14px;line-height:1.6;'><strong style='color:#2F241C;'>See you next year?</strong> {{NEXT_BIRTHDAY}} will be here before you know it. We'll send you a little reminder about 6 weeks before, so you can grab your favourite weekend slot early.</p></div></div></div>"};
+          const PLACE = {1:'ChIJdXLt_eOvEmsRICLwb4ZFjQU',3:'ChIJYy2SrRy7EmsRwEghAeunXmM',4:'ChIJI4lZdgS5EmsR-R2aNkZnJvg',5:'ChIJN7CqvUunEmsRJSovXBhf6mI',6:'ChIJmX_Ve22vEmsRFVWV-_XLEFo',11:'ChIJtXFmVuanEmsR_8hd9LAp-jA'};
+          const CUTOFF = Date.parse('2026-11-13T00:00:00+11:00');   // thank-you only for events on/after go-live day
+          const PAID = ['deposit_paid','paid','confirmed'];
+          const DAY = 86400000, LIMIT = 10, SITE = 'https://booking.morefun.com.au';
+          const now = Date.now();
+          const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+          const lc = s => String(s || '').trim().toLowerCase();
+          const plain = s => String(s || '').replace(/[\r\n]+/g, ' ').trim();
+          const parts = (ts, opts) => {
+            const o = {};
+            for (const p of new Intl.DateTimeFormat('en-AU', {timeZone: 'Australia/Sydney', ...opts}).formatToParts(new Date(ts))) o[p.type] = p.value;
+            return o;
+          };
+          const syd = ts => { const o = parts(ts, {year:'numeric', month:'numeric', day:'numeric', hour:'numeric', hourCycle:'h23'}); return {y:+o.year, m:+o.month, d:+o.day, h:+o.hour}; };
+          // Sydney wall-clock time -> epoch ms (handles DST by measuring the offset at that instant).
+          const sydTs = (y, m, d, h) => { const guess = Date.UTC(y, m - 1, d, h); const p = syd(guess); return guess - (Date.UTC(p.y, p.m - 1, p.d, p.h) - guess); };
+          const longDate = (ts, year) => { const o = parts(ts, {weekday:'long', day:'numeric', month:'long', year:'numeric'}); return `${o.weekday} ${o.day} ${o.month}` + (year ? ` ${o.year}` : ''); };
+          const fill = (html, map) => Object.keys(map).reduce((h, k) => h.split('{{' + k + '}}').join(map[k]), html);
+        
+          const locs = Object.fromEntries(($var.Locations || []).map(l => [l.id, l]));
+          const pkgs = Object.fromEntries(($var.Packages || []).map(p => [p.id, p]));
+          const roomOk = id => ($var.Rooms || []).some(r => Number(r.Location_id) === Number(id) && r.is_active);
+          const venueName = l => { const n = String((l && l.Name) || '').replace(/\s*-\s*\d+$/, ''); return /^koko/i.test(n) ? n : 'KOKO Amusement ' + n; };
+          const creditFor = email => ($var.Credits || []).some(c => lc(c.customer_email) === lc(email) && c.status === 'available');
+          const bookedAgain = b => ($var.Recent || []).some(o => o.id !== b.id && lc(o.customer_email) === lc(b.customer_email) && o.created_at > b.created_at && PAID.includes(o.status));
+        
+          function render(b, kind) {
+            const l = locs[b.location_id] || {};
+            const venue = esc(venueName(l));
+            // Party bookers get their first name; group contacts are often a school or company, so use the whole name.
+            const nameRaw = plain(b.booking_type === 'birthday_party' ? String(b.customer_name || '').trim().split(/\s+/)[0] : b.customer_name) || 'there';
+            const first = esc(nameRaw), firstRaw = nameRaw;
+            const childRaw = plain(b.birthday_child_name), child = esc(childRaw);
+            const party = b.booking_type === 'birthday_party';
+            const code = String(b.referral_code || '');
+            const credit = creditFor(b.customer_email);
+            const strong = v => `<strong style='color:#2F241C;'>${v}</strong>`;
+            const referral = lead => code ? fill(T.referral_block, {REFERRAL_LEAD: lead, REFERRAL_CODE: esc(code), REFERRAL_CARD_URL: `${SITE}/booking/referral-card?code=${encodeURIComponent(code)}`}) : '';
+            const creditBlock = (label, text) => credit ? fill(T.credit_block, {CREDIT_LABEL: label, CREDIT_TEXT: text}) : '';
+            const email = esc(b.customer_email);
+            if (kind === 'thank_you') {
+              const html = fill(T.thank_you_html, {
+                CREDIT_BLOCK: creditBlock('A little thank-you', `Your next KOKO party or group visit is $30 off. It's saved to ${strong(email)} and comes off automatically when you book with this email — no code needed.`),
+                REFERRAL_BLOCK: referral(party ? 'Did one of the parents ask where you booked?' : "Know another team, class or group who'd love it here?"),
+                NEXT_YEAR_BLOCK: party ? fill(T.next_year_block, {NEXT_BIRTHDAY: child ? `${child}'s next birthday` : 'The next birthday'}) : '',
+                BUBBLE: party ? 'Thanks for partying with us! 🎉' : `Thanks for visiting, ${first}! 👋`,
+                HEADING: party ? (child ? `Thank you for celebrating ${child}'s birthday with us!` : 'Thank you for celebrating with us!') : 'Thanks for bringing your group to KOKO!',
+                INTRO: party
+                  ? `Hi ${first}, we hope ${child || 'the birthday star'} and all the little guests had a blast at ${strong(venue)} on ${longDate(b.start_ts)}. Thank you for choosing KOKO to make the day special.`
+                  : `Hi ${first}, thank you for visiting ${strong(venue)} on ${longDate(b.start_ts)}. We hope everyone had a great time!`,
+                REVIEW_URL: PLACE[b.location_id] ? `https://search.google.com/local/writereview?placeid=${PLACE[b.location_id]}` : 'https://www.kokoamusement.com.au/',
+                REVIEW_WHO: party ? 'other families' : 'others',
+                BOOK_URL: `${SITE}/booking/${party ? 'birthday-party' : 'group'}`,
+                BOOK_LABEL: party ? 'Book your next visit' : 'Plan your next group visit',
+                WHY: `You're receiving this because you booked a ${party ? 'party' : 'group visit'} at KOKO Amusement.`,
+              });
+              const subject = party ? (childRaw ? `Thank you for celebrating ${childRaw}'s birthday at KOKO! 🎉` : 'Thank you for celebrating at KOKO! 🎉') : `Thanks for visiting KOKO Amusement, ${firstRaw}!`;
+              return {subject, html};
+            }
+            const canBookThere = l.is_active && roomOk(b.location_id);
+            const guests = Number(b.guests) || 0;
+            const pkg = pkgs[b.package_id] || {};
+            const html = fill(T.anniversary_html, {
+              CREDIT_BLOCK: creditBlock('Still waiting for you', `You still have $30 off saved to ${strong(email)}. It comes off automatically when you book with this email.`),
+              REFERRAL_BLOCK: referral(child ? `Party season for ${child}'s friends too?` : 'Party season for your friends too?'),
+              HEADING: child ? `${child}'s birthday is coming up again!` : "It's almost birthday time again!",
+              INTRO: `Hi ${first}, it's been almost a year since we celebrated ${child ? child + "'s birthday" : 'your party'} together. Want to do it again? Weekend party slots fill up fast, so booking early gets you the time that suits you best.`,
+              LOCATION: venue, PARTY_DATE: longDate(b.start_ts, true), PACKAGE: esc(pkg.Name || 'Birthday party'), GUESTS: String(guests),
+              BOOK_URL: canBookThere ? `${SITE}/booking/birthday-party?location_slug=${encodeURIComponent(l.slug)}&amp;guests=${guests}` : `${SITE}/booking/birthday-party`,
+              BOOK_LABEL: child ? `Book ${child}'s party` : 'Book your party',
+              BOOK_SUB: canBookThere ? `We'll start you at ${venue} with ${guests} guests — you can change anything.` : 'Pick any KOKO venue and time that suits you.',
+            });
+            const subject = childRaw ? `${childRaw}'s birthday is coming up — celebrate at KOKO again? 🎂` : 'Birthday coming up? Celebrate at KOKO again 🎂';
+            return {subject, html};
+          }
+        
+          const due = [];
+          const push = (b, kind, skip) => due.push({id: b.id, kind, to: String(b.customer_email || '').trim(), skip_reason: skip || '', ...(skip ? {subject: '', html: ''} : render(b, kind))});
+          if ($var.Forced) {
+            push($var.Forced, $input.force_kind === 'anniversary' ? 'anniversary' : 'thank_you');
+          } else {
+            for (const b of ($var.Bookings || [])) {
+              if (due.length >= LIMIT) break;
+              if (!PAID.includes(b.status) || !String(b.customer_email || '').includes('@') || !b.start_ts) continue;
+              const p = syd(b.start_ts);
+              if (!b.thankyou_sent_at && b.start_ts >= CUTOFF) {
+                const at = sydTs(p.y, p.m, p.d + 1, 9);
+                if (now >= at && now < at + 14 * DAY) { push(b, 'thank_you'); continue; }
+              }
+              if (b.booking_type === 'birthday_party' && !b.anniversary_sent_at) {
+                const party = sydTs(p.y + 1, p.m, p.d, 9);
+                if (now >= party - 42 * DAY && now < party) push(b, 'anniversary', bookedAgain(b) ? 'Booked again since' : '');
+              }
+            }
+          }
+          return {due, checked: ($var.Bookings || []).length};
+        """
+      timeout = 10
+    } as $Plan
+  
+    var $results {
+      value = []
+    }
+  
+    var $dc {
+      value = $env.MC_API_KEY|split:"-"|last
+    }
+  
+    var $mc_auth {
+      value = "Authorization: Basic "
+        |concat:("koko:"
+          |concat:$env.MC_API_KEY:""
+          |base64_encode
+        ):""
+    }
+  
+    foreach ($Plan.due) {
+      each as $Mail {
+        try_catch {
+          try {
+            var $skip {
+              value = $Mail.skip_reason
+            }
+          
+            conditional {
+              if ($skip == "") {
+                api.request {
+                  url = "https://"
+                    |concat:$dc:""
+                    |concat:".api.mailchimp.com/3.0/lists/873666e056/members/":""
+                    |concat:($Mail.to|to_lower|md5):""
+                    |concat:"?fields=status":""
+                  method = "GET"
+                  headers = []|push:$mc_auth
+                } as $Member
+              
+                conditional {
+                  if ($Member.response.status == 200 && ($Member.response.result.status == "unsubscribed" || $Member.response.result.status == "cleaned")) {
+                    var $skip {
+                      value = "Unsubscribed in Mailchimp"
+                    }
+                  }
+                }
+              }
+            }
+          
+            var $outcome {
+              value = "preview"
+            }
+          
+            conditional {
+              if ($input.send) {
+                conditional {
+                  if ($skip != "") {
+                    var $outcome {
+                      value = "skipped"
+                    }
+                  }
+                
+                  else {
+                    api.request {
+                      url = "https://api.resend.com/emails"
+                      method = "POST"
+                      params = {
+                        from   : "KOKO Amusement <booking@mail.morefun.com.au>"
+                        to     : $Mail.to
+                        subject: $Mail.subject
+                        html   : $Mail.html
+                      }
+                    
+                      headers = []
+                        |push:("Authorization: Bearer "|concat:$env.RESEND_API_KEY:"")
+                        |push:"Content-Type: application/json"
+                        |push:("Idempotency-Key: koko-followup/"
+                          |concat:$Mail.kind:""
+                          |concat:"/":""
+                          |concat:($Mail.id|to_text):""
+                        )
+                    } as $Sent
+                  
+                    var $outcome {
+                      value = ($Sent.response.status >= 200 && $Sent.response.status < 300) ? "sent" : "failed"
+                    }
+                  }
+                }
+              
+                conditional {
+                  if ($outcome == "sent" || $outcome == "skipped") {
+                    conditional {
+                      if ($Mail.kind == "anniversary") {
+                        db.patch bookings {
+                          field_name = "id"
+                          field_value = $Mail.id
+                          data = {
+                            anniversary_sent_at : $now_ts
+                            followup_skip_reason: $skip
+                          }
+                        } as $Marked
+                      }
+                    
+                      else {
+                        db.patch bookings {
+                          field_name = "id"
+                          field_value = $Mail.id
+                          data = {thankyou_sent_at: $now_ts, followup_skip_reason: $skip}
+                        } as $Marked
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          
+            var $results {
+              value = $results
+                |push:{id: $Mail.id, kind: $Mail.kind, to: $Mail.to, subject: $Mail.subject, outcome: $outcome, skip_reason: $skip}
+            }
+          }
+        
+          catch {
+            var $results {
+              value = $results
+                |push:{id: $Mail.id, kind: $Mail.kind, outcome: "error"}
+            }
+          }
+        }
+      }
+    }
+  }
+
+  response = {
+    checked : $Plan.checked
+    results : $results
+    rendered: ($input.send == true) ? [] : $Plan.due
+  }
+}
