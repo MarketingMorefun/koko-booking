@@ -21,7 +21,7 @@
 
 - 点「Review」会生成一个 **`hold` 订单**。这个房间和时段会被锁 15 分钟（`hold_expires_at_ts`）。
 - 如果有 $30 折扣（老客户或推荐码），这笔抵扣会先**预留**（`pending`），还不算用掉。
-- 客户勾了营销同意的话，通过 `mailchimp_subscribe` 加进 Mailchimp，标签是 `online booking`。
+- 客户勾了营销同意的话，通过 `mailchimp_subscribe` 加进 Mailchimp，标签是 `online booking`，同时写入名字、门店（`STORE`）和电话（`PHONE`，格式 `+614…`）。只写有值的字段，所以之后再订 newsletter 不会把门店和电话清空。Mailchimp 出错也不会影响下单。
 - 团体订单加购麻将时，客户要选麻将玩法。
 - [koko-booking-presence.js](koko-booking-presence.js) 在客户停留期间每 60 秒发一次 `BookingHeartbeat`，记录客户还在页面上。
 

@@ -576,14 +576,27 @@ query CreateGroupBooking verb=POST {
         // ok/status, and a Mailchimp hiccup doesn't change the response.
         conditional {
           if ($input.payload.marketing_consent) {
-            function.run mailchimp_subscribe {
-              input = {
-                email     : $input.payload.customer_email
-                first_name: $input.payload.customer_name|first_notnull:""|trim|split:" "|first
-                store     : $Location.Name
-                tag       : "online booking"
+            // try_catch: a Mailchimp error must never turn a saved booking into
+            // an error response for the customer.
+            try_catch {
+              try {
+                function.run mailchimp_subscribe {
+                  input = {
+                    email     : $input.payload.customer_email
+                    first_name: $input.payload.customer_name|first_notnull:""|trim|split:" "|first
+                    store     : $Location.Name
+                    phone     : $input.payload.customer_phone
+                    tag       : "online booking"
+                  }
+                } as $MailchimpResult
               }
-            } as $MailchimpResult
+            
+              catch {
+                var $MailchimpResult {
+                  value = {ok: false, status: 0}
+                }
+              }
+            }
           }
         }
       }

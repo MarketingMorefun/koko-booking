@@ -4,6 +4,7 @@ function mailchimp_subscribe {
     text first_name?
     text last_name?
     text store?
+    text phone?
     text tag?
   }
 
@@ -45,20 +46,124 @@ function mailchimp_subscribe {
             ):""
         }
       
+        // Only send fields that have a value, so a later signup with less
+        // info (e.g. the newsletter form, no store/phone) never blanks what
+        // an earlier booking filled in.
+        var $merge {
+          value = {}
+        }
+      
+        var $has_merge {
+          value = false
+        }
+      
+        var $fname {
+          value = $input.first_name|first_notnull:""|trim
+        }
+      
+        var $lname {
+          value = $input.last_name|first_notnull:""|trim
+        }
+      
+        var $store {
+          value = $input.store|first_notnull:""|trim
+        }
+      
+        // Phone in the same +61 format SyncMailchimp.gs uses
+        // (0412345678 -> +61412345678). Anything else is skipped rather
+        // than risk Mailchimp rejecting the whole contact.
+        var $phone_digits {
+          value = $input.phone
+            |first_notnull:""
+            |regex_replace:"/[^0-9]+/":""
+        }
+      
+        var $phone {
+          value = ""
+        }
+      
+        conditional {
+          if (($phone_digits|strlen) == 10 && ($phone_digits|substr:0:1) == "0") {
+            var $phone {
+              value = "+61"
+                |concat:($phone_digits|substr:1:9):""
+            }
+          }
+        
+          elseif (($phone_digits|strlen) == 11 && ($phone_digits|substr:0:2) == "61") {
+            var $phone {
+              value = "+"|concat:$phone_digits:""
+            }
+          }
+        }
+      
+        conditional {
+          if ($fname != "") {
+            var $merge {
+              value = $merge|set:"FNAME":$fname
+            }
+          
+            var $has_merge {
+              value = true
+            }
+          }
+        }
+      
+        conditional {
+          if ($lname != "") {
+            var $merge {
+              value = $merge|set:"LNAME":$lname
+            }
+          
+            var $has_merge {
+              value = true
+            }
+          }
+        }
+      
+        conditional {
+          if ($store != "") {
+            var $merge {
+              value = $merge|set:"STORE":$store
+            }
+          
+            var $has_merge {
+              value = true
+            }
+          }
+        }
+      
+        conditional {
+          if ($phone != "") {
+            var $merge {
+              value = $merge|set:"PHONE":$phone
+            }
+          
+            var $has_merge {
+              value = true
+            }
+          }
+        }
+      
+        var $body {
+          value = {
+            email_address: $email_clean
+            status_if_new: "subscribed"
+          }
+        }
+      
+        conditional {
+          if ($has_merge) {
+            var $body {
+              value = $body|set:"merge_fields":$merge
+            }
+          }
+        }
+      
         api.request {
           url = $member_url
           method = "PUT"
-          params = ```
-            {
-              email_address: $email_clean
-              status_if_new: "subscribed"
-              merge_fields : {
-                FNAME: $input.first_name|first_notnull:""
-                LNAME: $input.last_name|first_notnull:""
-                STORE: $input.store|first_notnull:""
-              }
-            }
-            ```
+          params = $body
           headers = []
             |push:$auth_header
             |push:"Content-Type: application/json"
