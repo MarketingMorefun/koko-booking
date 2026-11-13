@@ -5,6 +5,8 @@ its own — every file is either pasted into **Xano** (backend), a Google **Apps
 Script** project, or a Webflow **page's custom code**, by hand. This repo exists so
 changes are versioned and reviewable before they're pasted in.
 
+📘 **How it all fits together** — the booking lifecycle, every customer and store email, and how we ship changes — is in [WORKFLOW.md](WORKFLOW.md) (Chinese).
+
 ## Architecture
 
 ```
