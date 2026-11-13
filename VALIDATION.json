@@ -1,0 +1,119 @@
+{
+  "checked_at": "2026-11-13T18:20:36.707704+11:00",
+  "local_tests": {
+    "passed": 15,
+    "command": "node --test tests/booking-reliability.test.cjs"
+  },
+  "concurrency": {
+    "parallel": [
+      {
+        "action": "settle"
+      },
+      {
+        "action": "duplicate"
+      },
+      {
+        "action": "duplicate"
+      },
+      {
+        "action": "duplicate"
+      },
+      {
+        "action": "duplicate"
+      }
+    ],
+    "after_parallel": {
+      "status": "deposit_paid",
+      "balance": 33000,
+      "credit_count": 1
+    },
+    "old_expiry": {
+      "action": "ignore"
+    },
+    "expire": {
+      "action": "expire"
+    },
+    "after_expire": {
+      "status": "hold",
+      "balance": 0,
+      "credit_count": 1
+    }
+  },
+  "credit_release": {
+    "status": "hold",
+    "balance": 0,
+    "credit_count": 1,
+    "credit_status": "available"
+  },
+  "checkout": {
+    "reused_open_session": true,
+    "old_session_status": "expired",
+    "new_session_status": "open",
+    "currency": "aud",
+    "deposit_total": 5150,
+    "full_total": 38150,
+    "full_payment_type": "full",
+    "checkout_lifetime_seconds": 1859,
+    "stored_expiry_matches": true
+  },
+  "email_delivery": {
+    "signed_delivery_status": 200,
+    "recorded_status": "delivered",
+    "old_event_ignored": true,
+    "old_email_version_ignored": true,
+    "unsigned_status": 403
+  },
+  "cron": [
+    {
+      "id": 251849701,
+      "created_at": "2026-11-13 07:15:09+0000",
+      "status": 200,
+      "duration": 0.182,
+      "error_message": null
+    },
+    {
+      "id": 251849193,
+      "created_at": "2026-11-13 07:10:08+0000",
+      "status": 200,
+      "duration": 0.689,
+      "error_message": null
+    },
+    {
+      "id": 251848712,
+      "created_at": "2026-11-13 07:05:08+0000",
+      "status": 200,
+      "duration": 0.263,
+      "error_message": null
+    },
+    {
+      "id": 251847471,
+      "created_at": "2026-11-13 07:00:08+0000",
+      "status": 200,
+      "duration": 0.204,
+      "error_message": null
+    },
+    {
+      "id": 251846982,
+      "created_at": "2026-11-13 06:55:10+0000",
+      "status": 200,
+      "duration": 0.893,
+      "error_message": null
+    },
+    {
+      "id": 251846514,
+      "created_at": "2026-11-13 06:50:08+0000",
+      "status": 200,
+      "duration": 0.186,
+      "error_message": null
+    }
+  ],
+  "github": {
+    "pushed": false,
+    "reason": "Repository write permissions unavailable"
+  },
+  "webflow": {
+    "published_at_sydney": "2026-11-13T18:10:16.383+11:00",
+    "subsequent_user_instruction": "Stop publishing while edits continue",
+    "further_modifications_or_publishes": false
+  }
+}

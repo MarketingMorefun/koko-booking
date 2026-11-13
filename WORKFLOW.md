@@ -26,13 +26,14 @@
 - [koko-booking-presence.js](koko-booking-presence.js) 在客户停留期间每 60 秒发一次 `BookingHeartbeat`，记录客户还在页面上。
 
 ### 2. 付款（Stripe）
-- 点「Pay」会调用 `ConfirmBooking` / `ConfirmGroupBooking`，每次都新建一个 Stripe Checkout 链接。
+- 点「Pay」会调用 `ConfirmBooking` / `ConfirmGroupBooking`，先核对现有 Stripe Checkout 链接；有效且金额相同的链接会复用，需替换时先关闭旧链接。新链接有效期约 31 分钟。
 - 默认付 **$50 定金 + $1.50 Booking fee**。团体订单也可以选**一次付清**（`payment_option: "full"`）。
 - 付完跳到 `/booking/booking-success`，客户取消付款就跳到 `/booking/booking-cancelled`。
 - 成功页会用 `VerifyBookingConversion` 确认确实付了钱，再计一次转化。
 
 ### 3. 付款成功（`StripeWebhook`）
-Webhook 先验证 Stripe 签名，再向 Stripe 重新读取这次付款，核对订单号、币种和每一项金额。金额对不上的不会自动确认，而是标记成「待人工核查」（`payment_review_reason`）。核对通过后：
+先验证原始请求签名，再从 Stripe 读取真实 Session，核对门店、订单、AUD、金额和付款状态。金额或链接对不上的不会自动确认，而是标记成「待人工核查」（`payment_review_reason`）。以下付款与奖励操作在锁定订单的数据库事务里去重，相同 Session 不会再次执行：
+
 1. 订单状态改为 `deposit_paid`（付清的改为余额 0）。
 2. 生成这笔订单的 `referral_code`。
 3. 结算预留的折扣：标记为已用，或者给推荐人发 $30 抵扣。
@@ -40,7 +41,7 @@ Webhook 先验证 Stripe 签名，再向 Stripe 重新读取这次付款，核�
 5. 发确认邮件（见「三、邮件」）。发送失败会每 5 分钟自动重试，最多 5 次（`booking_reliability_worker`，随 `RunReminders` 一起运行）。
 6. 团体订单有麻将加购的，调用 `reserve_mahjong_rooms`，在 Cityheroes 麻将系统里占房。
 
-Stripe 发来 `checkout.session.expired` 时，只要订单还没付钱，就改为 `expired`。
+Stripe 发来 `checkout.session.expired` 时，只处理该订单当前使用的 Session。确认链接已过期后释放房间和预留抵扣：创建未满 24 小时回到可恢复的 `hold`，超过 24 小时才变成 `expired`。每 5 分钟的对账也会核对 Stripe，补处理迟到的成功或过期事件。
 
 ### 4. 没付款怎么办（弃单挽回）
 - [Reminders.gs](Reminders.gs) **每 5 分钟**调用一次 `RunReminders`，发两封提醒邮件（见「三、邮件」）。
@@ -83,10 +84,10 @@ cancelled / refunded   员工在后台操作
 
 | 频率 | 由谁执行 | 做什么 |
 |---|---|---|
-| 每 5 分钟 | Apps Script `Reminders.gs` | 调用 `RunReminders` 发弃单提醒 |
+| 每 5 分钟 | Apps Script `Reminders.gs` | 调用 `RunReminders`，先做付款过期对账和确认邮件补救，再发弃单提醒 |
 | 每小时 | Apps Script `SyncBookings.gs` | 同步表格、日历，给门店发邮件 |
 | 每天凌晨 3 点 | Apps Script `BirthdaySync.gs` | 给会员发生日礼品码，同步 Members 表格 |
-| 每次有人下单 | Xano `expire_stale_holds` | 把超过 24 小时未付的订单改为 `expired` |
+| 每次有人下单 | Xano `expire_stale_holds`（每 5 分钟也执行） | 先核对付款链接到期，再把超过 24 小时未付的购物车改为 `expired` |
 | 手动 | GitHub Actions `reminders.yml` | `RunReminders` 的备用触发入口 |
 
 ---
@@ -114,7 +115,7 @@ cancelled / refunded   员工在后台操作
 | 5 | 推荐码补发 | 一次性任务，已经跑完，现在会拒绝所有调用 | `You've got a $30 referral code from KOKO Amusement` | [BackfillReferralCodesAndCredits.txt](BackfillReferralCodesAndCredits.txt) |
 
 - **确认邮件的内容：** 订单详情、加购分项、付款汇总（含折扣行、已付金额、余额）、改期须知、定金不退说明（付清的单会换掉这段）、生日邀请函下载区（团体单不显示）、推荐码卡片、客户资料。
-- **确认邮件发送失败时：** `confirmation_email_sent_at` 保持空白，员工后台显示「Confirmation email: —」，员工点重发即可。重发也失败的话，后台会弹出红色提示「Didn't send」。
+- **确认邮件发送失败时：** `confirmation_email_sent_at` 保持空白，员工后台显示「Confirmation email: —」，后台记录错误及尝试次数，每隔至少 5 分钟自动重试，最多 5 次；失败达到 3 次或永久退信会通知负责人。员工可筛选 Email follow-up，核对后重发。Resend 接收为 accepted；投递回调启用后才会显示 delivered／bounced 等真实状态。重发接口要求 ADMIN_KEY。
 - **提醒邮件** 只有在 Resend 收下后才会标记为已发送，失败的会在下一轮重试。
 - **联系邮箱** 统一写的是 `marketing@kokoamusement.com.au`。
 - **生日礼品码邮件** 由 Mailchimp 那边的自动化发出，不在这个仓库里。`BirthdaySync.gs` 只负责写入 `CODE` 字段。
@@ -164,6 +165,9 @@ cancelled / refunded   员工在后台操作
 5. 新加的字段要**先在 `bookings` 表里建列**，否则存不进去。
 
 ### 改前端脚本（`.js`）
+
+本轮仓库写权限不足，前端以内联脚本部署；快照及发布暂停记录见 [webflow/README.md](webflow/README.md)。用户目前仍在修改 Webflow，后续发布需要用户重新安排。
+
 1. 在仓库里改好，commit 并 push 到 GitHub。
 2. Webflow 里通过 jsDelivr 引用，**一定要写 commit hash**（`@<commit>`），不能写 `@main`，否则 CDN 会给旧版本。
 3. Webflow 改完要 **Publish**。只 Save 不会上线，这是最常见的「改了没反应」的原因。
@@ -185,6 +189,10 @@ cancelled / refunded   员工在后台操作
 | Cityheroes 密钥 | Xano 表 `partner_keys` | Cityheroes `settings` |
 
 任何密钥只要在 git 历史里出现过，就等于公开了：要换掉，光删掉没用。
+
+### 付款和邮件可靠性
+
+签名密钥、事务去重、占位与弃单的独立计时、自动重试、投递状态和验收记录，见 [BOOKING_RELIABILITY.md](BOOKING_RELIABILITY.md)。Team Max 100 已确认统一为 8 次 Feature Games／1000 tickets，网站、PDF 和确认邮件读取同一张 Packages 表。
 
 ### 定价常量要几处一起改
 $50 定金、$1.50 Booking fee、$30 折扣在两个前端脚本和多个 Xano 接口里**各有一份**，改的时候每一份都要改。

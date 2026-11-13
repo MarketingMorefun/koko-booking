@@ -7,6 +7,8 @@ changes are versioned and reviewable before they're pasted in.
 
 📘 **How it all fits together** — the booking lifecycle, every customer and store email, and how we ship changes — is in [WORKFLOW.md](WORKFLOW.md) (Chinese).
 
+Payment/signature hardening, session expiry, email retries and the canonical package catalogue are documented in [BOOKING_RELIABILITY.md](BOOKING_RELIABILITY.md).
+
 ## Architecture
 
 ```
@@ -129,7 +131,7 @@ Bound to the "Booking Master" Google Sheet.
 ### Pricing constants (defined independently in both flow scripts — keep in sync)
 
 ```js
-DEPOSIT_CENTS      = 5000   // $50.00 refundable deposit
+DEPOSIT_CENTS      = 5000   // $50.00 non-refundable deposit
 SURCHARGE_CENTS    = 150    // $1.50 booking fee (shown as "Booking fee", not "card surcharge")
 PAYABLE_NOW_CENTS  = 5150   // $51.50 charged now (deposit + surcharge)
 MIN_ADVANCE_MS     = 259_200_000   // must book ≥ 72h ahead
@@ -178,8 +180,7 @@ shows a visible message instead of failing silently.
 
 ## Gotchas
 
-- **Publish is separate from Save** in both Xano and Webflow — a change that "doesn't
-  seem to work" is very often just unpublished.
+- **Webflow Save requires Publish.** Xano Metadata API PUT takes effect immediately; read back the deployed script after each change. For Xano UI changes, check the UI publication state separately.
 - **`hold_expires_at_ts` (15 min) ≠ "give up on this customer" (24h).** The 15-minute
   field only controls how long a booking exclusively blocks its exact room/slot from
   other customers during the conflict check in `CreateBooking`/`CreateGroupBooking`.

@@ -6,6 +6,33 @@ const PAYABLE_NOW_CENTS=DEPOSIT_CENTS+SURCHARGE_CENTS;
 const MIN_ADVANCE_MS=72*60*60*1000;
 const DEFAULT_SESSION_MINUTES=30;
 
+// Website cards, PDF and confirmation emails read the same Packages fields.
+window.kokoPackageIncludes=function(p){
+  if(!p)return [];
+  if(Array.isArray(p.features_json)&&p.features_json.length)return p.features_json.slice();
+  return [[p.free_play_minutes," mins Game Play"],[p.claw_games,"x Claw & Prize Games"],[p.feature_games,"x Feature Games"],[p.preloaded_tickets," KOKO Tickets"]].filter(function(x){return Number(x[0])>0;}).map(function(x){return x[0]+x[1];});
+};
+var canonicalPackagesPromise;
+window.kokoLoadPackageCatalogue=function(){
+  if(!canonicalPackagesPromise){
+    canonicalPackagesPromise=fetch(BASE_URL+"/BookingPackageCatalogue").then(function(r){if(!r.ok)throw new Error("Package details are unavailable. Please try again.");return r.json();}).then(function(d){if(!Array.isArray(d.packages))throw new Error("Package details are unavailable.");window.kokoPackageCatalogue=d.packages;return d.packages;}).catch(function(e){canonicalPackagesPromise=null;throw e;});
+  }
+  return canonicalPackagesPromise;
+};
+function syncCanonicalPackageCards(){
+  return window.kokoLoadPackageCatalogue().then(function(packages){
+    packages.forEach(function(pkg){
+      var card=groupPackageCard(pkg),list=card&&card.querySelector(".pcard-features");
+      if(!list)return;
+      var items=window.kokoPackageIncludes(pkg);
+      if(!items.length)return;
+      list.textContent="";
+      items.forEach(function(text){var item=document.createElement("div");item.className="pcard-feature";item.textContent="✦ "+text;list.appendChild(item);});
+    });
+  }).catch(function(e){console.error(e.message);});
+}
+
+
 const LOCATION_NAMES={
   Townhall_614:"Town Hall - 614",
   Hurstville:"Hurstville",
@@ -686,6 +713,7 @@ function renderExistingGroupPackages(packages){
 }
 
 function renderGroupPackages(packages){
+  syncCanonicalPackageCards();
   packages=packages && packages.length ? packages : packageListByLocation();
   const wrap=$("groupPackagesWrap") || $("groupPackagesSection");
   if(renderExistingGroupPackages(packages)) return;

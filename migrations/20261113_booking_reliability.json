@@ -1,0 +1,215 @@
+{
+  "add_fields": [
+    {
+      "table_id": 753452,
+      "name": "checkout_payment_cents",
+      "type": "int",
+      "description": "Booking payment / confirmation reliability",
+      "nullable": true,
+      "required": false,
+      "access": "public",
+      "default": "0"
+    },
+    {
+      "table_id": 753452,
+      "name": "checkout_total_cents",
+      "type": "int",
+      "description": "Booking payment / confirmation reliability",
+      "nullable": true,
+      "required": false,
+      "access": "public",
+      "default": "0"
+    },
+    {
+      "table_id": 753452,
+      "name": "confirmation_email_attempts",
+      "type": "int",
+      "description": "Booking payment / confirmation reliability",
+      "nullable": true,
+      "required": false,
+      "access": "public",
+      "default": "0"
+    },
+    {
+      "table_id": 753452,
+      "name": "confirmation_email_revision",
+      "type": "int",
+      "description": "Booking payment / confirmation reliability",
+      "nullable": true,
+      "required": false,
+      "access": "public",
+      "default": "0"
+    },
+    {
+      "table_id": 753452,
+      "name": "checkout_payment_type",
+      "type": "text",
+      "description": "Booking payment / confirmation reliability",
+      "nullable": true,
+      "required": false,
+      "access": "public"
+    },
+    {
+      "table_id": 753452,
+      "name": "payment_processed_session_id",
+      "type": "text",
+      "description": "Booking payment / confirmation reliability",
+      "nullable": true,
+      "required": false,
+      "access": "public"
+    },
+    {
+      "table_id": 753452,
+      "name": "payment_review_reason",
+      "type": "text",
+      "description": "Booking payment / confirmation reliability",
+      "nullable": true,
+      "required": false,
+      "access": "public"
+    },
+    {
+      "table_id": 753452,
+      "name": "confirmation_email_id",
+      "type": "text",
+      "description": "Booking payment / confirmation reliability",
+      "nullable": true,
+      "required": false,
+      "access": "public"
+    },
+    {
+      "table_id": 753452,
+      "name": "confirmation_email_status",
+      "type": "text",
+      "description": "Booking payment / confirmation reliability",
+      "nullable": true,
+      "required": false,
+      "access": "public"
+    },
+    {
+      "table_id": 753452,
+      "name": "confirmation_email_error",
+      "type": "text",
+      "description": "Booking payment / confirmation reliability",
+      "nullable": true,
+      "required": false,
+      "access": "public"
+    },
+    {
+      "table_id": 753452,
+      "name": "confirmation_email_request_id",
+      "type": "text",
+      "description": "Booking payment / confirmation reliability",
+      "nullable": true,
+      "required": false,
+      "access": "public"
+    },
+    {
+      "table_id": 753452,
+      "name": "confirmation_email_last_attempt_at",
+      "type": "timestamp",
+      "description": "Booking confirmation reliability",
+      "nullable": true,
+      "required": false,
+      "access": "public"
+    },
+    {
+      "table_id": 753452,
+      "name": "confirmation_email_next_retry_at",
+      "type": "timestamp",
+      "description": "Booking confirmation reliability",
+      "nullable": true,
+      "required": false,
+      "access": "public"
+    },
+    {
+      "table_id": 753452,
+      "name": "confirmation_email_alerted_at",
+      "type": "timestamp",
+      "description": "Booking confirmation reliability",
+      "nullable": true,
+      "required": false,
+      "access": "public"
+    },
+    {
+      "table_id": 753452,
+      "name": "confirmation_email_event_at",
+      "type": "timestamp",
+      "description": "Booking confirmation reliability",
+      "nullable": true,
+      "required": false,
+      "access": "public"
+    },
+    {
+      "table_id": 753452,
+      "name": "payment_event_log",
+      "type": "json",
+      "description": "Verified Stripe event audit; bounded to last 100 events",
+      "nullable": true,
+      "required": false,
+      "access": "public"
+    },
+    {
+      "table_id": 753452,
+      "name": "payment_fulfilment_done",
+      "type": "bool",
+      "description": "External resource fulfilment completed",
+      "nullable": true,
+      "required": false,
+      "access": "public",
+      "default": "0"
+    },
+    {
+      "table_id": 834786,
+      "name": "webhook_secret_live",
+      "type": "text",
+      "description": "Stripe webhook signing secret; never return to clients",
+      "nullable": true,
+      "required": false,
+      "access": "private"
+    },
+    {
+      "table_id": 834786,
+      "name": "webhook_endpoint_live",
+      "type": "text",
+      "description": "Stripe secured webhook endpoint id",
+      "nullable": true,
+      "required": false,
+      "access": "private"
+    },
+    {
+      "table_id": 753452,
+      "name": "payment_review_alerted_at",
+      "type": "timestamp",
+      "description": "Payment exception alert accepted at",
+      "nullable": true,
+      "required": false,
+      "access": "public"
+    }
+  ],
+  "add_table": {
+    "name": "booking_notification_settings",
+    "schema": [
+      {
+        "name": "service",
+        "type": "text",
+        "access": "private"
+      },
+      {
+        "name": "webhook_secret",
+        "type": "text",
+        "access": "private"
+      },
+      {
+        "name": "webhook_id",
+        "type": "text",
+        "access": "private"
+      }
+    ]
+  },
+  "package_update": {
+    "table_id": 724925,
+    "row_id": 3,
+    "feature_games": 8,
+    "preloaded_tickets": 1000
+  }
+}

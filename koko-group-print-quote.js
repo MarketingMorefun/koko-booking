@@ -14,23 +14,13 @@
   (document.head||document.documentElement).appendChild(style);
 })();
 (function(){
-  var PACKAGE_INCLUDES={
-    "koko team fun 60":["60 mins Game Play","5x Claw & Prize Games","3x Feature Game","500 KOKO Tickets"],
-    "koko team max 100":["100 mins Game Play","10x Claw & Prize Games","3x Feature Game","1000 KOKO Tickets"],
-    "haymarket classic":["1 Archery Game","1 Bowling Game","1 Hour Pool Game"],
-    "haymarket package a":["1 Archery Game","1 Bowling Game","1 Hour Pool Game"],
-    "haymarket plus":["1 Archery Game","1 Bowling Game","1 Hour Pool Game","$30 KOKO Card"],
-    "haymarket package b":["1 Archery Game","1 Bowling Game","1 Hour Pool Game","$30 KOKO Card"],
-    "haymarket value":["1 Archery Game","1 Bowling Game","$30 KOKO Card"],
-    "haymarket package c":["1 Archery Game","1 Bowling Game","$30 KOKO Card"],
-    "haymarket double play":["2 Archery Game","2 Bowling Game","$30 KOKO Card"],
-    "haymarket package d":["2 Archery Game","2 Bowling Game","$30 KOKO Card"]
-  };
   function insertIncludes(clone){
     var pkgEl=clone.querySelector("#groupReviewPackage");
     if(!pkgEl)return;
     var key=(pkgEl.textContent||"").trim().toLowerCase();
-    var items=PACKAGE_INCLUDES[key];
+    var state=window.groupBookingState||{};
+    var pkg=(window.kokoPackageCatalogue||[]).find(function(p){return Number(p.id)===Number(state.package_id)||String(p.Name||"").trim().toLowerCase()===key;});
+    var items=window.kokoPackageIncludes?window.kokoPackageIncludes(pkg):[];
     if(!items||!items.length)return;
     var box=document.createElement("div");
     box.className="koko-print-includes";
@@ -103,7 +93,11 @@
     }
     return root;
   }
-  function printQuote(){
+  async function printQuote(){
+    try{
+      if(!window.kokoLoadPackageCatalogue)throw new Error("Please reload the booking page and try again.");
+      await window.kokoLoadPackageCatalogue();
+    }catch(e){window.alert(e.message||"Cannot verify package details. Please try again.");return;}
     var sec=document.getElementById("groupReviewSection");
     var root=ensureRoot();
     root.innerHTML="";

@@ -314,6 +314,8 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
     if (f.loc && String(b.location_id) !== f.loc) return false;
     if (f.type === "birthday" && b.booking_type !== "birthday_party") return false;
     if (f.type === "group" && b.booking_type === "birthday_party") return false;
+    if (f.status === "payment_review" && !b.payment_review_reason) return false;
+    if (f.status === "email_failed" && !(["deposit_paid", "paid"].indexOf(b.status) >= 0 && (!b.confirmation_email_sent_at || ["failed", "bounced", "failed_delivery"].indexOf(b.confirmation_email_status) >= 0))) return false;
     if (f.status === "active" && !ACTIVE[b.status]) return false;
     if (f.status === "unpaid" && !UNPAID[b.status]) return false;
     if (f.status === "closed" && (ACTIVE[b.status] || UNPAID[b.status])) return false;
@@ -383,15 +385,17 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
     var today = ymd(Date.now());
     var all = S.data.bookings || [];
     // status counts reflect every other filter, so the numbers mean something
-    var counts = { active: 0, unpaid: 0, closed: 0, all: 0 };
+    var counts = { active: 0, email_failed: 0, payment_review: 0, unpaid: 0, closed: 0, all: 0 };
     all.forEach(function (b) {
       var f = Object.assign({}, S.f, { status: "all" });
       if (!matches(b, f, today)) return;
       counts.all++;
+      if (b.payment_review_reason) counts.payment_review++;
+      if (["deposit_paid", "paid"].indexOf(b.status) >= 0 && (!b.confirmation_email_sent_at || ["failed", "bounced", "failed_delivery"].indexOf(b.confirmation_email_status) >= 0)) counts.email_failed++;
       if (ACTIVE[b.status]) counts.active++; else if (UNPAID[b.status]) counts.unpaid++; else counts.closed++;
     });
     chips(root.querySelector("#kkaWhen"), "when", [["upcoming", "Upcoming"], ["today", "Today"], ["week", "Next 7 days"], ["past", "Past"], ["all", "All dates"]]);
-    chips(root.querySelector("#kkaStatus"), "status", [["active", "Booked"], ["unpaid", "Unpaid"], ["closed", "Cancelled / expired"], ["all", "Any status"]], counts);
+    chips(root.querySelector("#kkaStatus"), "status", [["active", "Booked"], ["email_failed", "Email follow-up"], ["payment_review", "Payment review"], ["unpaid", "Unpaid"], ["closed", "Cancelled / expired"], ["all", "Any status"]], counts);
 
     var rows = all.filter(function (b) { return matches(b, S.f, today); });
     var asc = S.f.when === "upcoming" || S.f.when === "today" || S.f.when === "week";
@@ -502,7 +506,11 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
 
       '<section class="kka-sec"><h3>Details</h3><dl class="kka-kv">' +
       kv("Paid at", fmtShort(b.paid_at)) +
-      kv("Confirmation email", b.confirmation_email_sent_at ? fmtShort(b.confirmation_email_sent_at) : "—") +
+      kv("Email status", b.confirmation_email_status || (b.confirmation_email_sent_at ? "accepted (legacy)" : "—")) +
+      kv("Email accepted", b.confirmation_email_sent_at ? fmtShort(b.confirmation_email_sent_at) : "—") +
+      kv("Email attempts", b.confirmation_email_attempts || 0) +
+      kv("Email error", b.confirmation_email_error || "—") +
+      kv("Payment review", b.payment_review_reason || "—") +
       kv("Reminders", UNPAID[b.status] || b.reminder_1_sent || b.reminder_2_sent ?
         (b.reminder_skip_reason ? "Skipped — " + b.reminder_skip_reason : [b.reminder_1_sent ? "1st sent" : "1st not sent", b.reminder_2_sent ? "2nd sent" : "2nd not sent"].join(" · ")) : "—") +
       kv("Referral code", b.referral_code || "—") +
@@ -757,7 +765,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
       var msg = "Saved #" + b.id + ".";
       if (emailAfter) {
         try {
-          var m = await post("ResendConfirmationEmail", { key: S.key, payload: { booking_id: b.id } });
+          var m = await post("ResendConfirmationEmail", { key: S.key, request_id: "staff-" + Date.now() + "-" + Math.random().toString(36).slice(2), payload: { booking_id: b.id } });
           if (m.error_message) throw new Error(m.error_message);
           msg += " Updated confirmation emailed to " + r.booking.customer_email + ".";
         } catch (e2) { toast("Saved, but the email didn't send: " + e2.message, true); }
@@ -781,9 +789,9 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
   async function resend(b) {
     if (!confirm("Send the confirmation email for #" + b.id + " to " + b.customer_email + " again?")) return;
     try {
-      var r = await post("ResendConfirmationEmail", { key: S.key, payload: { booking_id: b.id } });
+      var r = await post("ResendConfirmationEmail", { key: S.key, request_id: "staff-" + Date.now() + "-" + Math.random().toString(36).slice(2), payload: { booking_id: b.id } });
       if (r.error_message) throw new Error(r.message || r.error_message);
-      toast("Confirmation email sent to " + b.customer_email + ".");
+      toast("Email accepted for " + b.customer_email + ". Delivery is tracked separately.");
     } catch (e) { toast("Didn't send: " + e.message, true); }
   }
 

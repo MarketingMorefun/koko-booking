@@ -1,59 +1,28 @@
-<!-- KOKO Group Booking: "Save this quote as a PDF" button -->
-<!-- Paste this into Webflow: /booking/group page settings → Custom code → Footer,
-     BELOW the existing <script src="...koko-group-booking.js"> line. Do not remove that line. -->
-<style>
-.koko-print-quote-wrap{display:flex;flex-direction:column;align-items:center;margin-top:18px}
-.koko-print-quote{display:inline-flex;align-items:center;gap:8px;padding:13px 20px;border:2px solid #221d16;border-radius:16px;background:#F5D949;box-shadow:4px 4px 0 #221d16;font-weight:700;font-size:14px;color:#221d16;cursor:pointer;transition:all 140ms ease}
-.koko-print-quote:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 #221d16}
-.koko-print-quote:active{transform:translate(0,0);box-shadow:2px 2px 0 #221d16}
-.koko-print-hint{margin-top:8px;font-size:13px;color:#8a7d6a;text-align:center}
-#kokoPrintRoot{display:none;font-family:'Poppins',Arial,sans-serif}
-.koko-print-head{font-family:'Poppins',Arial,sans-serif;color:#2F241C}
-.koko-print-head strong{font-size:18px;display:block;margin-bottom:6px}
-.koko-print-head span{font-size:12px;color:#7B6A58}
-.koko-print-includes{margin:4px 0 14px;padding:12px 14px;border:1px solid #221D16;border-radius:12px;background:#FAF6EE;font-family:'Poppins',Arial,sans-serif}
-.koko-print-includes-title{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#221D16;background:#F5D949;border:1px solid #221D16;border-radius:999px;padding:3px 10px;margin-bottom:8px}
-.koko-print-includes-list{margin:0;padding:0;list-style:none;display:grid;gap:3px}
-.koko-print-includes-list li{font-size:13px;color:#2F241C;padding-left:14px;position:relative}
-.koko-print-includes-list li:before{content:"✦";position:absolute;left:0;color:#221D16;font-size:11px}
-.koko-print-custom-note{margin-top:16px;padding-top:14px;border-top:1px solid #E8DDCC;font-family:'Poppins',Arial,sans-serif;font-size:12.5px;color:#7B6A58;line-height:1.5;text-align:center}
-.koko-print-custom-note strong{color:#2F241C}
-@media print{
-  /* Remove every top-level element from layout — this is what actually stops
-     the blank pages, since visibility:hidden alone still reserves space. */
-  body>*{display:none !important}
-  #kokoPrintRoot{
-    display:block !important;
-    position:static !important;
-    width:100% !important;
-    max-width:760px !important;
-    margin:0 auto !important;
-    padding:0 !important;
-  }
-  #kokoPrintRoot *{visibility:visible !important;box-shadow:none !important;font-family:'Poppins',Arial,sans-serif !important}
-  #kokoPrintRoot .koko-print-quote-wrap{display:none !important}
-  @page{margin:10mm;size:A4}
-}
-</style>
+<!-- Same canonical-data PDF export as the hosted .js file. -->
 <script>
+/*
+ * koko-group-print-quote.js
+ *
+ * "Save this quote as a PDF" button on the /booking/group review step.
+ * Same code as koko-group-print-quote.html, packaged as a single file so it
+ * can load from jsDelivr like the flow scripts instead of being pasted inline.
+ * Load it AFTER koko-group-booking.js.
+ */
 (function(){
-  var PACKAGE_INCLUDES={
-    "koko team fun 60":["60 mins Game Play","5x Claw & Prize Games","3x Feature Game","500 KOKO Tickets"],
-    "koko team max 100":["100 mins Game Play","10x Claw & Prize Games","3x Feature Game","1000 KOKO Tickets"],
-    "haymarket classic":["1 Archery Game","1 Bowling Game","1 Hour Pool Game"],
-    "haymarket package a":["1 Archery Game","1 Bowling Game","1 Hour Pool Game"],
-    "haymarket plus":["1 Archery Game","1 Bowling Game","1 Hour Pool Game","$30 KOKO Card"],
-    "haymarket package b":["1 Archery Game","1 Bowling Game","1 Hour Pool Game","$30 KOKO Card"],
-    "haymarket value":["1 Archery Game","1 Bowling Game","$30 KOKO Card"],
-    "haymarket package c":["1 Archery Game","1 Bowling Game","$30 KOKO Card"],
-    "haymarket double play":["2 Archery Game","2 Bowling Game","$30 KOKO Card"],
-    "haymarket package d":["2 Archery Game","2 Bowling Game","$30 KOKO Card"]
-  };
+  var css=".koko-print-quote-wrap{display:flex;flex-direction:column;align-items:center;margin-top:18px}\n.koko-print-quote{display:inline-flex;align-items:center;gap:8px;padding:13px 20px;border:2px solid #221d16;border-radius:16px;background:#F5D949;box-shadow:4px 4px 0 #221d16;font-weight:700;font-size:14px;color:#221d16;cursor:pointer;transition:all 140ms ease}\n.koko-print-quote:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 #221d16}\n.koko-print-quote:active{transform:translate(0,0);box-shadow:2px 2px 0 #221d16}\n.koko-print-hint{margin-top:8px;font-size:13px;color:#8a7d6a;text-align:center}\n#kokoPrintRoot{display:none;font-family:'Poppins',Arial,sans-serif}\n.koko-print-head{font-family:'Poppins',Arial,sans-serif;color:#2F241C}\n.koko-print-head strong{font-size:18px;display:block;margin-bottom:6px}\n.koko-print-head span{font-size:12px;color:#7B6A58}\n.koko-print-includes{margin:4px 0 14px;padding:12px 14px;border:1px solid #221D16;border-radius:12px;background:#FAF6EE;font-family:'Poppins',Arial,sans-serif}\n.koko-print-includes-title{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#221D16;background:#F5D949;border:1px solid #221D16;border-radius:999px;padding:3px 10px;margin-bottom:8px}\n.koko-print-includes-list{margin:0;padding:0;list-style:none;display:grid;gap:3px}\n.koko-print-includes-list li{font-size:13px;color:#2F241C;padding-left:14px;position:relative}\n.koko-print-includes-list li:before{content:\"\u2726\";position:absolute;left:0;color:#221D16;font-size:11px}\n.koko-print-custom-note{margin-top:16px;padding-top:14px;border-top:1px solid #E8DDCC;font-family:'Poppins',Arial,sans-serif;font-size:12.5px;color:#7B6A58;line-height:1.5;text-align:center}\n.koko-print-custom-note strong{color:#2F241C}\n@media print{\n  /* Remove every top-level element from layout \u2014 this is what actually stops\n     the blank pages, since visibility:hidden alone still reserves space. */\n  body>*{display:none !important}\n  #kokoPrintRoot{\n    display:block !important;\n    position:static !important;\n    width:100% !important;\n    max-width:760px !important;\n    margin:0 auto !important;\n    padding:0 !important;\n  }\n  #kokoPrintRoot *{visibility:visible !important;box-shadow:none !important;font-family:'Poppins',Arial,sans-serif !important}\n  #kokoPrintRoot .koko-print-quote-wrap{display:none !important}\n  @page{margin:10mm;size:A4}\n}\n";
+  var style=document.createElement("style");
+  style.id="kokoPrintQuoteStyles";
+  style.textContent=css;
+  (document.head||document.documentElement).appendChild(style);
+})();
+(function(){
   function insertIncludes(clone){
     var pkgEl=clone.querySelector("#groupReviewPackage");
     if(!pkgEl)return;
     var key=(pkgEl.textContent||"").trim().toLowerCase();
-    var items=PACKAGE_INCLUDES[key];
+    var state=window.groupBookingState||{};
+    var pkg=(window.kokoPackageCatalogue||[]).find(function(p){return Number(p.id)===Number(state.package_id)||String(p.Name||"").trim().toLowerCase()===key;});
+    var items=window.kokoPackageIncludes?window.kokoPackageIncludes(pkg):[];
     if(!items||!items.length)return;
     var box=document.createElement("div");
     box.className="koko-print-includes";
@@ -126,7 +95,11 @@
     }
     return root;
   }
-  function printQuote(){
+  async function printQuote(){
+    try{
+      if(!window.kokoLoadPackageCatalogue)throw new Error("Please reload the booking page and try again.");
+      await window.kokoLoadPackageCatalogue();
+    }catch(e){window.alert(e.message||"Cannot verify package details. Please try again.");return;}
     var sec=document.getElementById("groupReviewSection");
     var root=ensureRoot();
     root.innerHTML="";
@@ -183,4 +156,5 @@
   if(document.readyState!=="loading"){watch()}else{document.addEventListener("DOMContentLoaded",watch)}
   new MutationObserver(watch).observe(document.documentElement,{attributes:true,childList:true,subtree:true,attributeFilter:["style","class"]});
 })();
+
 </script>
