@@ -627,14 +627,32 @@ query ResendConfirmationEmail verb=POST {
             |push:"Content-Type: application/json"
         } as $ResendEmail
       
-        db.patch bookings {
-          field_name = "id"
-          field_value = $Booking.id
-          data = {confirmation_email_sent_at: $now_ts}
-        } as $Booking
-      
-        var $message {
-          value = "Confirmation email re-sent"
+        // Only record the email as sent if Resend accepted it; otherwise
+        // tell the admin page, which shows error_message to staff.
+        conditional {
+          if ($ResendEmail.response.status >= 200 && $ResendEmail.response.status < 300) {
+            db.patch bookings {
+              field_name = "id"
+              field_value = $Booking.id
+              data = {confirmation_email_sent_at: $now_ts}
+            } as $Booking
+          
+            var $message {
+              value = "Confirmation email re-sent"
+            }
+          }
+        
+          else {
+            var $error_message {
+              value = "The email service rejected it (status "
+                |concat:($ResendEmail.response.status|to_text):""
+                |concat:"). Try again later.":""
+            }
+          
+            var $message {
+              value = $error_message
+            }
+          }
         }
       }
     }

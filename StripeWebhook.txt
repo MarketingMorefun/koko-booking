@@ -747,14 +747,33 @@ query StripeWebhook verb=POST {
                         |push:"Content-Type: application/json"
                     } as $ResendEmail
                   
-                    db.patch bookings {
-                      field_name = "id"
-                      field_value = $Booking.id
-                      data = {confirmation_email_sent_at: $now_ts}
-                    } as $Booking
-                  
-                    var $message {
-                      value = "Booking marked as deposit paid and confirmation email sent"
+                    // Only record the email as sent if Resend accepted it. On a
+                    // failure confirmation_email_sent_at stays empty, so the
+                    // staff admin page shows "Confirmation email: —" and staff
+                    // can resend it from there.
+                    conditional {
+                      if ($ResendEmail.response.status >= 200 && $ResendEmail.response.status < 300) {
+                        db.patch bookings {
+                          field_name = "id"
+                          field_value = $Booking.id
+                          data = {confirmation_email_sent_at: $now_ts}
+                        } as $Booking
+                      
+                        var $message {
+                          value = "Booking marked as deposit paid and confirmation email sent"
+                        }
+                      }
+                    
+                      else {
+                        var $error_message {
+                          value = "Confirmation email NOT sent: Resend answered "
+                            |concat:($ResendEmail.response.status|to_text):""
+                        }
+                      
+                        var $message {
+                          value = "Booking marked as deposit paid, but the confirmation email failed; resend it from the staff admin page"
+                        }
+                      }
                     }
                   }
                 
