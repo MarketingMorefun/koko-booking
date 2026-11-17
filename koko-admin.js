@@ -540,6 +540,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
     ["date", "start", "end", "guests", "package_id", "customer_name", "customer_phone", "customer_email",
       "birthday_child_name", "birthday_child_gender", "average_age", "booking_notes", "status"].forEach(function (k) { setVal(k, orig[k]); });
     ["package_total_cents", "addons_total_cents", "grand_total_cents", "deposit_paid_cents", "balance_due_cents"].forEach(function (k) { setVal(k, centsToInput(orig[k])); });
+    S.pricedGuests = orig.guests;
     S.ad = addons(b).map(function (a) { return Object.assign({}, a); });
     S.adOrig = adKey(S.ad);
     orig.addons = adSummary(S.ad);
@@ -568,12 +569,19 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
       }
       if (f === "package_total_cents" || f === "addons_total_cents" || f === "grand_total_cents" || f === "deposit_paid_cents") recalcBalance(b, true);
       else onEdit();
+      // guest count / add-on quantity: reprice while typing, shortly after the last key
+      if (f === "guests") { clearTimeout(S.guestTimer); S.guestTimer = setTimeout(function () { guestsChanged(b); }, 500); }
+      var ai = e.target.getAttribute && e.target.getAttribute("data-ad-qty");
+      if (ai != null && Number(e.target.value) >= 1) {
+        S.ad[+ai].qty = Math.round(Number(e.target.value));
+        clearTimeout(S.qtyTimer); S.qtyTimer = setTimeout(addonTotalsInPlace, 300);
+      }
     });
     dr.addEventListener("change", function (e) {
       var f = fieldOf(e.target);
       if (f === "location_id" && isParty) fillRooms(getVal("location_id"), null);
       if (f === "location_id") renderAddons();
-      if (f === "guests" && S.ad.some(function (x) { return x.unit_type === "per_person"; })) addonsChanged();
+      if (f === "guests") { clearTimeout(S.guestTimer); guestsChanged(b); }
       var ai = e.target.getAttribute("data-ad-qty"), ao = e.target.getAttribute("data-ad-opt");
       if (ai != null) { S.ad[+ai].qty = Math.max(1, Math.round(Number(e.target.value) || 1)); addonsChanged(); }
       if (ao != null) {
@@ -586,7 +594,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
         setVal("end", fromMin(toMin(getVal("end")) + delta));
       }
       if (f === "start") lastStart = getVal("start");
-      if (isParty && (f === "package_id" || f === "guests" || f === "location_id")) recalc(b);
+      if (isParty && (f === "package_id" || f === "location_id")) recalc(b);
       onEdit();
     });
     document.addEventListener("keydown", escClose);
@@ -834,7 +842,10 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
       });
       addonsChanged();
       toast("Package price " + money(q.package_total_cents) + " from today's price list — check, then Save.");
-    } catch (e) { toast("Couldn't get a price: " + e.message, true); }
+    } catch (e) {
+      if (my === S.quoteSeq && S.open === b) addonsChanged(); // per-guest add-ons still follow
+      toast("Couldn't get a price: " + e.message, true);
+    }
   }
 
   // ---------- add-ons ----------
@@ -933,6 +944,28 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
     addonsChanged();
   }
   // Add-on list changed → redraw it and roll the new add-on price into the totals.
+  // Guest count settled on a new number → per-guest add-ons follow, and a party
+  // gets its package price for that many guests.
+  function guestsChanged(b) {
+    var g = String(getVal("guests") || "").trim();
+    if (!(Number(g) >= 1) || g === S.pricedGuests) return;
+    S.pricedGuests = g;
+    if (b.booking_type === "birthday_party") recalc(b);
+    else if (S.ad.some(function (x) { return x.unit_type === "per_person"; })) addonsChanged();
+  }
+  // Quantity typed into an add-on: update prices without redrawing (keeps the cursor in the box).
+  function addonTotalsInPlace() {
+    if (!S.drawer) return;
+    var rows = S.drawer.querySelectorAll(".kka-ad"), adTotal = 0;
+    S.ad.forEach(function (x, i) {
+      var t = adLineTotal(x); adTotal += t;
+      var cell = rows[i] && rows[i].querySelector(".kka-ad-total"); if (cell) cell.textContent = money(t);
+    });
+    var sum = S.drawer.querySelector(".kka-adsum span:last-child"); if (sum) sum.textContent = money(adTotal);
+    setVal("addons_total_cents", centsToInput(adTotal));
+    setVal("grand_total_cents", centsToInput((toCents(getVal("package_total_cents")) || 0) + adTotal));
+    recalcBalance(S.open, true);
+  }
   function addonsChanged() {
     renderAddons();
     var adTotal = S.ad.reduce(function (t, x) { return t + adLineTotal(x); }, 0);
