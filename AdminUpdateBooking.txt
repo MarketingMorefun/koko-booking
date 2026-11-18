@@ -37,8 +37,9 @@ query AdminUpdateBooking verb=POST {
     // CreateBooking writes). Sent only when staff changed the add-ons.
     text addons_json?
   
-    // Comma list of text fields to blank out (an empty string input arrives
-    // as null, i.e. "leave as is"), e.g. "booking_notes,average_age"
+    // Comma list of fields to blank out — text fields → "", money fields → 0
+    // (an empty string / a 0 input arrives as null, i.e. "leave as is"),
+    // e.g. "booking_notes,addons_total_cents"
     text clear?
   }
 
@@ -274,6 +275,48 @@ query AdminUpdateBooking verb=POST {
             var $data {
               value = $data
                 |set:"balance_due_cents":$input.balance_due_cents
+            }
+          }
+        }
+      
+        // Money set to $0 — an int input of 0 arrives as null ("leave as is"),
+        // so the page also lists those fields in `clear`.
+        conditional {
+          if ((","|concat:($input.clear|first_notempty:""):""|concat:",":"")|contains:",package_total_cents,") {
+            var $data {
+              value = $data|set:"package_total_cents":0
+            }
+          }
+        }
+      
+        conditional {
+          if ((","|concat:($input.clear|first_notempty:""):""|concat:",":"")|contains:",addons_total_cents,") {
+            var $data {
+              value = $data|set:"addons_total_cents":0
+            }
+          }
+        }
+      
+        conditional {
+          if ((","|concat:($input.clear|first_notempty:""):""|concat:",":"")|contains:",grand_total_cents,") {
+            var $data {
+              value = $data|set:"grand_total_cents":0
+            }
+          }
+        }
+      
+        conditional {
+          if ((","|concat:($input.clear|first_notempty:""):""|concat:",":"")|contains:",deposit_paid_cents,") {
+            var $data {
+              value = $data|set:"deposit_paid_cents":0
+            }
+          }
+        }
+      
+        conditional {
+          if ((","|concat:($input.clear|first_notempty:""):""|concat:",":"")|contains:",balance_due_cents,") {
+            var $data {
+              value = $data|set:"balance_due_cents":0
             }
           }
         }

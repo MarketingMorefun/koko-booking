@@ -756,7 +756,8 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
     ["birthday_child_name", "birthday_child_gender", "average_age", "booking_notes"].forEach(function (k) {
       if (k in ch) { if (ch[k] === "") clear.push(k); else body[k] = ch[k]; }
     });
-    Object.keys(MONEY).forEach(function (k) { if (k in ch) body[k] = ch[k]; });
+    // $0 has to go in `clear` too: Xano reads an int input of 0 as "not sent"
+    Object.keys(MONEY).forEach(function (k) { if (k in ch) { body[k] = ch[k]; if (ch[k] === 0) clear.push(k); } });
     if ("addons" in ch) body.addons_json = JSON.stringify(S.ad.map(function (x) { x.line_total_cents = adLineTotal(x); return x; }));
     if (clear.length) body.clear = clear.join(",");
     body.log_line = (S.staff ? "[" + S.staff + "] " : "") + log.join("; ");
