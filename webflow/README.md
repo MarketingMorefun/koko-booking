@@ -16,3 +16,5 @@ GitHub 连接及开发机凭据本轮均无仓库写权限，因此这三份前�
 
 
 2026-11-17：`staff-embed.html` 改回 jsDelivr 固定 commit 引用（源码即根目录 `koko-admin.js`），不再内联压缩脚本。以后员工后台更新时，只需把链接里 `@` 后面的 commit 换成新的。
+
+2026-11-20：`group-footer.html` 同样改回 jsDelivr 固定 commit 引用（源码即根目录 `koko-group-booking.js`），替换掉原来约 45KB 的内联压缩脚本。替换前核对过：线上内联脚本与仓库源码的字符串完全一致。以后更新团体预订页，只需改链接里 `@` 后面的 commit。
