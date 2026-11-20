@@ -2,7 +2,10 @@ function send_booking_confirmation {
   input {
     int booking_id
     bool automatic
-    text request_id
+  
+    // Optional: automatic sends pass "", which Xano treats as missing for a
+    // required text input; that silently blocked every automatic email.
+    text request_id?
   }
 
   stack {

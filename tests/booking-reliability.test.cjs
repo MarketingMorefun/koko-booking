@@ -69,6 +69,21 @@ test('records full group payment using stored expectation',async()=>{
   const s={amount_total:35150,metadata:{...session.metadata,payment_type:'full',deposit_cents:'35000'}};
   const r=await evaluate(b,s);assert.equal(r.action,'settle');assert.equal(r.balance_cents,0);
 });
+test('full group payment carries a 1.8% booking fee; deposit keeps $1.50',async()=>{
+  const plan=lambda('create_booking_checkout');
+  const full=await plan({Booking:{booking_type:'group_booking',grand_total_cents:68400,discount_cents:0}},{payment_option:'full'});
+  assert.equal(full.surcharge_cents,1231);assert.equal(full.total_cents,69631);assert.equal(full.fee_name,'Booking Fee (1.8%)');
+  const dep=await plan({Booking:{booking_type:'group_booking',grand_total_cents:68400,discount_cents:0}},{payment_option:'deposit'});
+  assert.equal(dep.surcharge_cents,150);assert.equal(dep.total_cents,5150);
+  const kid=await plan({Booking:{booking_type:'birthday_party',grand_total_cents:68400}},{payment_option:'full'});
+  assert.equal(kid.payment_type,'deposit');assert.equal(kid.surcharge_cents,150);
+});
+test('settles a full payment with the 1.8% fee, reviews a wrong fee',async()=>{
+  const b={checkout_payment_type:'full',checkout_payment_cents:68400,checkout_total_cents:69631};
+  const s={amount_total:69631,metadata:{...session.metadata,payment_type:'full',deposit_cents:'68400',surcharge_cents:'1231'}};
+  const r=await evaluate(b,s);assert.equal(r.action,'settle');assert.equal(r.payment_cents,68400);
+  assert.equal((await evaluate(b,{...s,metadata:{...s.metadata,surcharge_cents:'150'}})).action,'review');
+});
 test('legacy sessions still require independently computed deposit and fee',async()=>{
   const b={checkout_payment_type:null,checkout_payment_cents:null,checkout_total_cents:null};
   assert.equal((await evaluate(b)).action,'settle');

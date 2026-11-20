@@ -546,6 +546,8 @@ function upsertCalendarEventForRow(context) {
     calendarId: calendarId,
     bookingId: bookingId,
     status: status,
+    depositPaid: row[index.depositPaidCol],
+    balanceDue: row[index.balanceDueCol],
     locationName: locationName,
     partyRoom: row[index.partyRoomCol],
     bookingDate: bookingDate,
@@ -832,6 +834,8 @@ function buildNewBookingEmailBody(info) {
   return [
     info.status === "confirmed"
       ? "A new booking has been confirmed (paid by invoice — not paid online yet):"
+      : isPaidInFull(info)
+      ? "A new booking has been received (PAID IN FULL — nothing to collect on the day):"
       : "A new booking has been received (deposit paid):",
     "",
     "",
@@ -986,11 +990,22 @@ function buildCalendarSyncSignature(info) {
     safeText(info.locationId),
     safeText(info.partyRoomId),
     safeText(info.packageId)
-  ]);
+  ].concat(isPaidInFull(info) ? ["paid in full"] : []));
+}
+
+// Paid online with nothing left to pay on the day (group "Pay in full",
+// or an older booking paid in full) — more than the $50 deposit paid.
+function isPaidInFull(info) {
+  return info.status === "deposit paid" &&
+    info.balanceDue !== "" && info.balanceDue !== null && info.balanceDue !== undefined &&
+    Number(info.balanceDue) === 0 &&
+    Number(info.depositPaid) > 50;
 }
 
 function buildCalendarTitle(info) {
-  const paidPrefix = info.status === "deposit paid"
+  const paidPrefix = isPaidInFull(info)
+    ? "💰[PAID IN FULL] "
+    : info.status === "deposit paid"
     ? "💰[PAID] "
     : info.status === "confirmed" ? "🧾[INVOICE] " : "";
 
@@ -1024,7 +1039,7 @@ function buildCalendarTitle(info) {
 function buildCalendarDescription(info) {
   return [
     "Booking No: " + safeText(info.bookingId),
-    "Status: " + safeText(info.status),
+    "Status: " + (isPaidInFull(info) ? "paid in full" : safeText(info.status)),
     "",
     "Location: " + safeText(info.locationName),
     "Party Room: " + safeText(info.partyRoom),
@@ -1045,7 +1060,7 @@ function buildCalendarDescription(info) {
     "Package Total: " + formatMoneyForCalendar(info.packageTotal),
     "Add-ons Total: " + formatMoneyForCalendar(info.addonsTotal),
     "Grand Total: " + formatMoneyForCalendar(info.grandTotal),
-    "Deposit Paid: " + formatMoneyForCalendar(info.depositPaid),
+    (isPaidInFull(info) ? "Paid in Full: " : "Deposit Paid: ") + formatMoneyForCalendar(info.depositPaid),
     "Balance Due: " + formatMoneyForCalendar(info.balanceDue),
     "",
     "Created At: " + safeText(info.createdAt),
@@ -1116,6 +1131,12 @@ function centsToAud(cents) {
 }
 
 function getDepositPaidAud(booking) {
+  // Checkout payments from Nov 2026 could be saved with deposit_paid_cents 0;
+  // the amount actually charged (excl. booking fee) is checkout_payment_cents.
+  if ((booking.status === "deposit_paid" || booking.status === "paid") && !Number(booking.deposit_paid_cents) && Number(booking.checkout_payment_cents) > 0 && booking.payment_processed_session_id) {
+    return centsToAud(booking.checkout_payment_cents);
+  }
+
   if (booking.deposit_paid_cents !== null && booking.deposit_paid_cents !== undefined && booking.deposit_paid_cents !== "") {
     return centsToAud(booking.deposit_paid_cents);
   }

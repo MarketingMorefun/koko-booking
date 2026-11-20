@@ -5,7 +5,7 @@
 ## 付款怎么确认
 
 - `StripeWebhook` 对未经 JSON 解析的原文验证 Stripe HMAC 签名；接受 5 分钟内的时间戳，支持多个 `v1` 签名，逐门店匹配签名密钥。未签名或错误签名返回 403。
-- 验签通过后，用对应门店的 Stripe API key 重新读取 Checkout Session；校验当前 Session、订单和门店编号、AUD、正式模式、付款状态及金额。定金应为 5000 分 + 150 分手续费，付清应等于下单时存下的付款金额 + 手续费。
+- 验签通过后，用对应门店的 Stripe API key 重新读取 Checkout Session；校验当前 Session、订单和门店编号、AUD、正式模式、付款状态及金额。定金应为 5000 分 + 150 分手续费；团体付清的手续费是付款金额的 1.8%（四舍五入到分）。核对时用下单时存下的付款金额和总额（手续费 = 总额 − 付款金额）。
 - `apply_stripe_checkout` 在数据库事务中锁定订单。相同事件或同一个 Session 再到达时，付款、推荐码、推荐奖励和回头客抵扣均不重复执行。不同事件对应同一笔付款也只处理一次。
 - 已有 `referral_code` 保持不变。奖励还会检查 `source_booking_id + reason`，避免重复发放。
 - 不匹配的真实付款写入 `payment_review_reason`，供后台筛选和内部告警处理；不会自动覆盖已取消或退款的状态。
@@ -74,3 +74,10 @@ Stripe 实测：定金链接 A$51.50，付清链接 A$381.50；重复点击复�
 Resend 实测：签名有效的送达事件返回 200 并写入 `delivered`；旧事件和旧邮件编号均不覆盖新状态，未签名请求返回 403。未向客户发送测试邮件。
 
 现有每 5 分钟 `RunReminders` 的最近 6 次执行均返回 200，`error_message` 为 null；新补救函数已经接在该入口鉴权之后。详见 [VALIDATION.json](VALIDATION.json)。
+
+
+## 2026-11-20 修复
+
+- 自动确认邮件：`send_booking_confirmation` 的 `request_id` 改为可选。之前自动发送传空字符串，被 Xano 当作缺参报错，11-14 起 10 单付款后没收到确认邮件；修复后已由 worker 补发（各 1 次）。
+- 实付金额：`apply_stripe_checkout` 结算后再单独写一次 `deposit_paid_cents`／`balance_due_cents`（原来的写入在线上留下 0）。641–656 已按 `checkout_payment_cents` 补写。
+- 团体付清手续费 1.8%（定金仍 $1.50）。Stripe 实测：$696 付清 → A$708.53；改回定金 → A$51.50。测试订单 #658 已设为 expired。

@@ -36,7 +36,7 @@ function apply_stripe_checkout {
                 else if (s.mode !== 'payment' || s.livemode !== true || s.currency !== 'aud' || String(s.client_reference_id) !== String(b.id) || String(s.metadata?.booking_id) !== String(b.id) || String(s.metadata?.location_id) !== String(b.location_id)) { action = 'review'; reason = 'Checkout identity, mode or currency does not match booking'; }
                 else if (s.status === 'expired' && unpaid) action = 'expire';
                 else if (s.status === 'complete' && s.payment_status === 'paid') {
-                  if (!Number.isSafeInteger(s.amount_total) || s.amount_total !== total || Number(s.metadata?.deposit_cents) !== payment || Number(s.metadata?.surcharge_cents) !== 150 || !['deposit','full'].includes(paymentType) || (b.checkout_payment_type && s.metadata?.payment_type !== paymentType)) { action = 'review'; reason = 'Checkout amount does not match stored payment expectation'; }
+                  if (!Number.isSafeInteger(s.amount_total) || s.amount_total !== total || Number(s.metadata?.deposit_cents) !== payment || Number(s.metadata?.surcharge_cents) !== total - payment || !['deposit','full'].includes(paymentType) || (b.checkout_payment_type && s.metadata?.payment_type !== paymentType)) { action = 'review'; reason = 'Checkout amount does not match stored payment expectation'; }
                   else if (b.payment_processed_session_id === s.id || paid) action = 'duplicate';
                   else if (unpaid) action = 'settle';
                   else { action = 'review'; reason = 'Payment arrived for a closed booking'; }
@@ -159,6 +159,17 @@ function apply_stripe_checkout {
                       confirmation_email_next_retry_at: "now"
                     }
                     ```
+                } as $Booking
+              
+                // The expression-mode patch above has left deposit_paid_cents at 0
+                // on live payments (Nov 2026); write the paid amount explicitly.
+                db.patch bookings {
+                  field_name = "id"
+                  field_value = $Booking.id
+                  data = {
+                    deposit_paid_cents: $Decision.payment_cents
+                    balance_due_cents : $Decision.balance_cents
+                  }
                 } as $Booking
               }
             

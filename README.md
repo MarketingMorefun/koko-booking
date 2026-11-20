@@ -43,7 +43,8 @@ Apps Script (Reminders.gs, time-driven trigger every 5 min)
   (`cdn.jsdelivr.net/gh/MarketingMorefun/koko-booking@<commit>/...`) — always
   reference a commit hash, not `@main`, or the CDN serves a stale cached copy.
 - **Money:** always cents (`int ..._cents`). Deposit is `$50.00` (`5000`), card
-  surcharge `$1.50` (`150`), referral/repeat-customer discount `$30.00` (`3000`).
+  surcharge `$1.50` (`150`) on a deposit — a group booking paid in full pays 1.8% of the amount instead
+  (`create_booking_checkout`, rounded to the cent) — referral/repeat-customer discount `$30.00` (`3000`).
 
 🔑 **API keys live in Xano, never in this repo** (it's public — jsDelivr needs that).
 Resend: workspace variable `RESEND_API_KEY` (Settings → Workspace Variables), read as
@@ -101,7 +102,7 @@ the Xano UI since the repo was last synced. Xano reformats on save (and prefers
 | `create_booking_checkout.txt` | Shared by `ConfirmBooking`/`ConfirmGroupBooking`. Under row locks: re-checks the slot, re-reserves any discount credit, reuses a still-valid open Stripe session or expires it and creates a new one (31-minute expiry), and stores the expected amounts (`checkout_payment_cents`, `checkout_total_cents`, `checkout_payment_type`). |
 | `apply_stripe_checkout.txt` | Decides what a Stripe session means for a booking (`settle` / `expire` / `duplicate` / `review` / `ignore`), checking id, mode, currency and every amount against what was stored. `settle` marks it `deposit_paid`, finalises credits and rewards, mints the referral code and queues the confirmation email. Mismatches are flagged in `payment_review_reason` instead of being trusted. Every event is logged in `payment_event_log`. |
 | `fulfil_paid_booking.txt` | After payment: holds Cityheroes mahjong rooms once (`payment_fulfilment_done`), then calls `send_booking_confirmation`. |
-| `send_booking_confirmation.txt` | Builds and sends the confirmation email (Resend, with an idempotency key per booking + revision). Records `accepted` only when Resend returns an id; failures are retried every 5 min, up to 5 times. Automatic sends skip bookings that already have a confirmation on record. |
+| `send_booking_confirmation.txt` | Builds and sends the confirmation email (Resend, with an idempotency key per booking + revision). Records `accepted` only when Resend returns an id; failures are retried every 5 min, up to 5 times. Automatic sends skip bookings that already have a confirmation on record. `request_id` must stay optional: automatic sends pass `""`, which Xano treats as missing — when it was required (14–20 Nov 2026) every automatic confirmation silently failed. |
 | `booking_reliability_worker.txt` | Runs from `RunReminders` every 5 min: `expire_stale_holds`, up to 10 queued/failed paid bookings through `fulfil_paid_booking`, and `[ACTION NEEDED]` emails to marketing for payment reviews and confirmations that bounced or failed 3+ times. |
 | `reconcile_checkout_holds.txt` | For `pending_payment` bookings past their checkout expiry: asks Stripe for the session state, expires stale open sessions, and settles or releases through `apply_stripe_checkout`. If Stripe can't be reached the room stays held (fails closed). |
 | `release_booking_checkout.txt` | After Stripe confirms a session expired: frees the reserved credit and room (back to `hold`, or `expired` once 24 h old). |

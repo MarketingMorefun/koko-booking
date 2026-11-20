@@ -85,7 +85,9 @@ function create_booking_checkout {
           code = """
             const b=$var.Booking, option=$input.payment_option==='full'&&b.booking_type==='group_booking'?'full':'deposit';
             const payment=option==='full'?Math.max(0,b.grand_total_cents-(b.discount_cents||0)):5000;
-            return {payment_type:option,payment_cents:payment,total_cents:payment+150,expires_at:Math.floor(Date.now()/1000)+1860};
+            // Booking fee: $1.50 on the $50 deposit; 1.8% of the amount when paying in full.
+            const fee=option==='full'?Math.round(payment*18/1000):150;
+            return {payment_type:option,payment_cents:payment,surcharge_cents:fee,fee_name:option==='full'?'Booking Fee (1.8%)':'Booking Fee',total_cents:payment+fee,expires_at:Math.floor(Date.now()/1000)+1860};
             """
           timeout = 10
         } as $Plan
@@ -192,15 +194,15 @@ function create_booking_checkout {
                 |set:"line_items[0][price_data][product_data][name]":"KOKO Booking Payment"
                 |set:"line_items[1][quantity]":1
                 |set:"line_items[1][price_data][currency]":"aud"
-                |set:"line_items[1][price_data][unit_amount]":150
-                |set:"line_items[1][price_data][product_data][name]":"Booking Fee"
+                |set:"line_items[1][price_data][unit_amount]":$Plan.surcharge_cents
+                |set:"line_items[1][price_data][product_data][name]":$Plan.fee_name
                 |set:"metadata[booking_id]":$Booking.id
                 |set:"metadata[location_id]":$Booking.location_id
                 |set:"metadata[package_id]":$Booking.package_id
                 |set:"metadata[payment_type]":$Plan.payment_type
                 |set:"metadata[stripe_mode]":"live"
                 |set:"metadata[deposit_cents]":$Plan.payment_cents
-                |set:"metadata[surcharge_cents]":150
+                |set:"metadata[surcharge_cents]":$Plan.surcharge_cents
               headers = []
                 |push:("Authorization: Bearer "
                   |concat:$StripeKey.stripe_secret_key_live:""
@@ -235,7 +237,7 @@ function create_booking_checkout {
             stripe_session_id     : $stripe_session_id
             payment_url           : $payment_url
             hold_expires_at_ts    : $Current.expires_at * 1000
-            surcharge_cents       : 150
+            surcharge_cents       : $Plan.surcharge_cents
             checkout_payment_cents: $Plan.payment_cents
             checkout_total_cents  : $Plan.total_cents
             checkout_payment_type : $Plan.payment_type

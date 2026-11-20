@@ -2,6 +2,7 @@
 const BASE_URL="https://x8ki-letl-twmt.n7.xano.io/api:KARDPSrJ";
 const DEPOSIT_CENTS=5000;
 const SURCHARGE_CENTS=150;
+const FULL_FEE_PER_MILLE=18; // 1.8% booking fee when paying in full
 const PAYABLE_NOW_CENTS=DEPOSIT_CENTS+SURCHARGE_CENTS;
 const MIN_ADVANCE_MS=72*60*60*1000;
 const DEFAULT_SESSION_MINUTES=30;
@@ -1366,7 +1367,8 @@ function renderGroupReview(){
 }
 
 // ---- Pay $50 deposit (default) or pay the whole booking now ----
-// Both add the same $1.50 booking fee. ConfirmGroupBooking charges
+// Deposit adds a $1.50 booking fee; paying in full adds 1.8% of the amount
+// (create_booking_checkout rounds the same way). ConfirmGroupBooking charges
 // whichever option is sent as payment_option; StripeWebhook records a full
 // payment with nothing left to pay on the day.
 function groupNetTotalCents(){
@@ -1381,8 +1383,11 @@ function groupPayFull(){
 function groupDueNowCents(){
   return groupPayFull()?groupNetTotalCents():DEPOSIT_CENTS;
 }
+function groupFeeCents(){
+  return groupPayFull()?Math.round(groupDueNowCents()*FULL_FEE_PER_MILLE/1000):SURCHARGE_CENTS;
+}
 function groupPayableNowCents(){
-  return groupDueNowCents()+SURCHARGE_CENTS;
+  return groupDueNowCents()+groupFeeCents();
 }
 // The "Deposit due today" / "$50.00" pair is static Webflow text; find it
 // once by its original wording and keep a handle so it can be rewritten.
@@ -1405,7 +1410,7 @@ function updateGroupPaymentDisplay(){
   const box=document.getElementById("kokoGroupSurchargeBreakdown");
   if(box){
     const row=function(label,value,bold){return "<div style=\"display:flex;justify-content:space-between;align-items:center;"+(bold?"font-weight:900;margin-top:8px;padding-top:8px;border-top:1px solid #E8DDCC;":"font-weight:600;color:#7B6A58;margin-bottom:6px;")+"\"><span>"+label+"</span><span>"+value+"</span></div>";};
-    box.innerHTML=row(full?"Full payment":"Deposit",money(groupDueNowCents()))+row("Booking fee",money(SURCHARGE_CENTS))+row("Total payable now",money(groupPayableNowCents()),true);
+    box.innerHTML=row(full?"Full payment":"Deposit",money(groupDueNowCents()))+row(full?"Booking fee (1.8%)":"Booking fee",money(groupFeeCents()))+row("Total payable now",money(groupPayableNowCents()),true);
   }
   const btn=$("groupConfirmBtn");
   if(btn) btn.textContent="Pay "+money(groupPayableNowCents());
@@ -1430,7 +1435,7 @@ function injectPaymentOptions(btn){
   wrap.style.cssText="display:grid;gap:10px;margin:0 0 14px;font-family:'Maven Pro',Arial,sans-serif;text-align:left;";
   [
     ["deposit","Pay "+money(DEPOSIT_CENTS)+" deposit now","Remaining "+money(Math.max(net-DEPOSIT_CENTS,0))+" payable on the day"],
-    ["full","Pay in full now",money(net)+" today — nothing left to pay on the day"]
+    ["full","Pay in full now",money(net)+" + 1.8% booking fee today — nothing left to pay on the day"]
   ].forEach(function(o){
     const label=document.createElement("label");
     label.style.cssText="display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:2px solid #E8DDCC;border-radius:14px;cursor:pointer;background:#FFFBF5;";
