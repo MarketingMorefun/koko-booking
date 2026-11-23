@@ -87,7 +87,22 @@ function create_booking_checkout {
             const payment=option==='full'?Math.max(0,b.grand_total_cents-(b.discount_cents||0)):5000;
             // Booking fee: $1.50 on the $50 deposit; 1.8% of the amount when paying in full.
             const fee=option==='full'?Math.round(payment*18/1000):150;
-            return {payment_type:option,payment_cents:payment,surcharge_cents:fee,fee_name:option==='full'?'Booking Fee (1.8%)':'Booking Fee',total_cents:payment+fee,expires_at:Math.floor(Date.now()/1000)+1860};
+            // Paid in full: Stripe also issues a paid invoice (PDF, emailed to the customer).
+            let when=String(b.date||'');
+            try{ if(b.start_ts) when=new Date(Number(b.start_ts)).toLocaleString('en-AU',{timeZone:'Australia/Sydney',weekday:'short',day:'numeric',month:'short',year:'numeric',hour:'numeric',minute:'2-digit'}); }catch(e){}
+            const P='invoice_creation[invoice_data]';
+            const invoice_params=option==='full'?{
+              'invoice_creation[enabled]':'true',
+              [P+'[description]']:'KOKO group booking #'+b.id+' – paid in full',
+              [P+'[metadata][booking_id]']:String(b.id),
+              [P+'[custom_fields][0][name]']:'Booking No.',
+              [P+'[custom_fields][0][value]']:'#'+b.id,
+              [P+'[custom_fields][1][name]']:'Event date',
+              [P+'[custom_fields][1][value]']:when.slice(0,140),
+              [P+'[footer]']:'Paid in full – nothing to pay on the day. Thank you for booking with KOKO Amusement.',
+              'line_items[0][price_data][product_data][name]':'KOKO group booking #'+b.id+' ('+(b.guests||'')+' guests) – paid in full'
+            }:{};
+            return {payment_type:option,payment_cents:payment,surcharge_cents:fee,fee_name:option==='full'?'Booking Fee (1.8%)':'Booking Fee',total_cents:payment+fee,expires_at:Math.floor(Date.now()/1000)+1860,invoice_params};
             """
           timeout = 10
         } as $Plan
@@ -203,6 +218,7 @@ function create_booking_checkout {
                 |set:"metadata[stripe_mode]":"live"
                 |set:"metadata[deposit_cents]":$Plan.payment_cents
                 |set:"metadata[surcharge_cents]":$Plan.surcharge_cents
+                |merge:$Plan.invoice_params
               headers = []
                 |push:("Authorization: Bearer "
                   |concat:$StripeKey.stripe_secret_key_live:""

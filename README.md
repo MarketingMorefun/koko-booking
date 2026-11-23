@@ -44,7 +44,7 @@ Apps Script (Reminders.gs, time-driven trigger every 5 min)
   reference a commit hash, not `@main`, or the CDN serves a stale cached copy.
 - **Money:** always cents (`int ..._cents`). Deposit is `$50.00` (`5000`), card
   surcharge `$1.50` (`150`) on a deposit — a group booking paid in full pays 1.8% of the amount instead
-  (`create_booking_checkout`, rounded to the cent) — referral/repeat-customer discount `$30.00` (`3000`).
+  (`create_booking_checkout`, rounded to the cent); a full payment also turns on Stripe `invoice_creation`, so Stripe emails the customer a paid PDF invoice (booking no., event date; ABN shows once it is set in that store's Stripe account) — referral/repeat-customer discount `$30.00` (`3000`).
 
 🔑 **API keys live in Xano, never in this repo** (it's public — jsDelivr needs that).
 Resend: workspace variable `RESEND_API_KEY` (Settings → Workspace Variables), read as

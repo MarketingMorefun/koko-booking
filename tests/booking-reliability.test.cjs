@@ -75,6 +75,7 @@ test('full group payment carries a 1.8% booking fee; deposit keeps $1.50',async(
   assert.equal(full.surcharge_cents,1231);assert.equal(full.total_cents,69631);assert.equal(full.fee_name,'Booking Fee (1.8%)');
   const dep=await plan({Booking:{booking_type:'group_booking',grand_total_cents:68400,discount_cents:0}},{payment_option:'deposit'});
   assert.equal(dep.surcharge_cents,150);assert.equal(dep.total_cents,5150);
+  assert.equal(full.invoice_params['invoice_creation[enabled]'],'true');assert.deepEqual(dep.invoice_params,{});
   const kid=await plan({Booking:{booking_type:'birthday_party',grand_total_cents:68400}},{payment_option:'full'});
   assert.equal(kid.payment_type,'deposit');assert.equal(kid.surcharge_cents,150);
 });
