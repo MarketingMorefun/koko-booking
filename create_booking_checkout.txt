@@ -102,6 +102,9 @@ function create_booking_checkout {
               [P+'[footer]']:'Paid in full – nothing to pay on the day. Thank you for booking with KOKO Amusement.',
               'line_items[0][price_data][product_data][name]':'KOKO group booking #'+b.id+' ('+(b.guests||'')+' guests) – paid in full'
             }:{};
+            // Store company's ABN (Stripe tax id, saved per location in stripe_location_keys).
+            const txi=($var.StripeKey&&$var.StripeKey.invoice_tax_id)||'';
+            if(option==='full'&&txi) invoice_params[P+'[account_tax_ids][0]']=txi;
             return {payment_type:option,payment_cents:payment,surcharge_cents:fee,fee_name:option==='full'?'Booking Fee (1.8%)':'Booking Fee',total_cents:payment+fee,expires_at:Math.floor(Date.now()/1000)+1860,invoice_params};
             """
           timeout = 10
