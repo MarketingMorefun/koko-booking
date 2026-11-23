@@ -81,7 +81,8 @@ test('full group payment carries a 1.8% booking fee; deposit keeps $1.50',async(
 test('settles a full payment with the 1.8% fee, reviews a wrong fee',async()=>{
   const b={checkout_payment_type:'full',checkout_payment_cents:68400,checkout_total_cents:69631};
   const s={amount_total:69631,metadata:{...session.metadata,payment_type:'full',deposit_cents:'68400',surcharge_cents:'1231'}};
-  const r=await evaluate(b,s);assert.equal(r.action,'settle');assert.equal(r.payment_cents,68400);
+  const r=await evaluate(b,s);assert.equal(r.action,'settle');assert.equal(r.payment_cents,68400);assert.equal(r.paid_status,'paid');
+  assert.equal((await evaluate()).paid_status,'deposit_paid');
   assert.equal((await evaluate(b,{...s,metadata:{...s.metadata,surcharge_cents:'150'}})).action,'review');
 });
 test('legacy sessions still require independently computed deposit and fee',async()=>{

@@ -41,7 +41,7 @@ function apply_stripe_checkout {
                   else if (unpaid) action = 'settle';
                   else { action = 'review'; reason = 'Payment arrived for a closed booking'; }
                 }
-                return {action,reason,payment_cents:payment,balance_cents:Math.max(0,b.grand_total_cents-(b.discount_cents||0)-payment),referral_code:b.referral_code || 'KOKO-'+b.id+'-'+crypto.randomBytes(6).toString('hex').toUpperCase(),log:log.some(e=>e.id===$input.event_id)?log:[...log,{id:$input.event_id,type:$input.event_type,session_id:s.id,action,at:Date.now()}].slice(-100)};
+                return {action,reason,paid_status:paymentType==='full'?'paid':'deposit_paid',payment_cents:payment,balance_cents:Math.max(0,b.grand_total_cents-(b.discount_cents||0)-payment),referral_code:b.referral_code || 'KOKO-'+b.id+'-'+crypto.randomBytes(6).toString('hex').toUpperCase(),log:log.some(e=>e.id===$input.event_id)?log:[...log,{id:$input.event_id,type:$input.event_type,session_id:s.id,action,at:Date.now()}].slice(-100)};
                 """
               timeout = 10
             } as $Decision
@@ -163,10 +163,12 @@ function apply_stripe_checkout {
               
                 // The expression-mode patch above has left deposit_paid_cents at 0
                 // on live payments (Nov 2026); write the paid amount explicitly.
+                // Paid in full at checkout -> status "paid" (staff page: Paid in full).
                 db.patch bookings {
                   field_name = "id"
                   field_value = $Booking.id
                   data = {
+                    status            : $Decision.paid_status
                     deposit_paid_cents: $Decision.payment_cents
                     balance_due_cents : $Decision.balance_cents
                   }
