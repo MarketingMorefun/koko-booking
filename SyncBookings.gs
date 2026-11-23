@@ -574,7 +574,9 @@ function upsertCalendarEventForRow(context) {
     guestCount: row[index.guestsCol],
     averageAge: row[index.averageAgeCol],
     birthdayChildGender: row[index.birthdayChildGenderCol],
-    status: status
+    status: status,
+    depositPaid: row[index.depositPaidCol],
+    balanceDue: row[index.balanceDueCol]
   });
 
   const description = buildCalendarDescription({
