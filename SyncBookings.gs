@@ -992,7 +992,7 @@ function buildCalendarSyncSignature(info) {
     safeText(info.locationId),
     safeText(info.partyRoomId),
     safeText(info.packageId)
-  ].concat(isPaidInFull(info) ? ["paid in full"] : []));
+  ].concat(isPaidInFull(info) ? ["paid in full", "title v2"] : []));
 }
 
 // Paid online with nothing left to pay on the day (group "Pay in full",
