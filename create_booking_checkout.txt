@@ -93,18 +93,23 @@ function create_booking_checkout {
             const P='invoice_creation[invoice_data]';
             const invoice_params=option==='full'?{
               'invoice_creation[enabled]':'true',
-              [P+'[description]']:'KOKO group booking #'+b.id+' – paid in full',
+              [P+'[description]']:'Tax Invoice – KOKO group booking #'+b.id+' – paid in full',
               [P+'[metadata][booking_id]']:String(b.id),
-              [P+'[custom_fields][0][name]']:'Booking No.',
-              [P+'[custom_fields][0][value]']:'#'+b.id,
-              [P+'[custom_fields][1][name]']:'Event date',
-              [P+'[custom_fields][1][value]']:when.slice(0,140),
+              [P+'[custom_fields][0][name]']:'Document',
+              [P+'[custom_fields][0][value]']:'Tax Invoice',
+              [P+'[custom_fields][1][name]']:'Booking No.',
+              [P+'[custom_fields][1][value]']:'#'+b.id,
+              [P+'[custom_fields][2][name]']:'Event date',
+              [P+'[custom_fields][2][value]']:when.slice(0,140),
               [P+'[footer]']:'Paid in full – nothing to pay on the day. Thank you for booking with KOKO Amusement.',
               'line_items[0][price_data][product_data][name]':'KOKO group booking #'+b.id+' ('+(b.guests||'')+' guests) – paid in full'
             }:{};
             // Store company's ABN (Stripe tax id, saved per location in stripe_location_keys).
             const txi=($var.StripeKey&&$var.StripeKey.invoice_tax_id)||'';
             if(option==='full'&&txi) invoice_params[P+'[account_tax_ids][0]']=txi;
+            // Prices include 10% GST: the invoice shows 'GST (10% incl.)'; amounts don't change.
+            const gst=($var.StripeKey&&$var.StripeKey.gst_tax_rate_id)||'';
+            if(option==='full'&&gst){ invoice_params['line_items[0][tax_rates][0]']=gst; invoice_params['line_items[1][tax_rates][0]']=gst; }
             return {payment_type:option,payment_cents:payment,surcharge_cents:fee,fee_name:option==='full'?'Booking Fee (1.8%)':'Booking Fee',total_cents:payment+fee,expires_at:Math.floor(Date.now()/1000)+1860,invoice_params};
             """
           timeout = 10
