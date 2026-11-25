@@ -493,13 +493,17 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
       fld("package_total_cents", "Package $", '<input inputmode="decimal">') +
       fld("addons_total_cents", "Add-ons $", '<input inputmode="decimal">') +
       fld("grand_total_cents", "Total $", '<input inputmode="decimal">') +
-      '<label class="kka-field"><span>Discount</span><input disabled value="' + esc(centsToInput(b.discount_cents || 0)) + '"></label>' +
+      fld("discount_cents", "Discount $", '<input inputmode="decimal">') +
       fld("deposit_paid_cents", "Paid so far $", '<input inputmode="decimal">') +
       fld("balance_due_cents", "Balance due $", '<input inputmode="decimal">') +
       "</div>" +
       '<div class="kka-note">Works itself out: Total = package + add-ons · Balance = total − discount − paid.' +
       (isParty ? " Changing the package, guests or venue fills in the package price from today's price list." : "") +
       " You can still type over any number.</div>" +
+      (b.discount_reason && b.discount_reason !== "referral" && b.discount_reason !== "repeat_customer" ?
+        '<div class="kka-note"><b>Promo ' + esc(b.discount_reason) + ":</b> the discount does not change by itself when you edit guests or package. Correct it here" +
+        (b.discount_reason === "BLACKFRIDAY" && !isParty ? " (25% of the package, max $100; guests added later pay full price)." :
+         b.discount_reason === "BLACKFRIDAY" ? " ($4 per guest on Party Max; set 0 if moved to Party Fun; guests added later pay full price)." : ".") + "</div>" : "") +
       '<div class="kka-note">Changing money here doesn\'t charge or refund the card — do refunds in Stripe.</div></section>' +
 
       '<section class="kka-sec"><h3>Status</h3><div class="kka-grid">' + fld("status", "Status", "<select>" + statusOpts + "</select>") + "</div></section>" +
@@ -539,7 +543,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
     if (isParty) fillRooms(orig.location_id, orig.party_room_id);
     ["date", "start", "end", "guests", "package_id", "customer_name", "customer_phone", "customer_email",
       "birthday_child_name", "birthday_child_gender", "average_age", "booking_notes", "status"].forEach(function (k) { setVal(k, orig[k]); });
-    ["package_total_cents", "addons_total_cents", "grand_total_cents", "deposit_paid_cents", "balance_due_cents"].forEach(function (k) { setVal(k, centsToInput(orig[k])); });
+    ["package_total_cents", "addons_total_cents", "grand_total_cents", "discount_cents", "deposit_paid_cents", "balance_due_cents"].forEach(function (k) { setVal(k, centsToInput(orig[k])); });
     S.pricedGuests = orig.guests;
     S.ad = addons(b).map(function (a) { return Object.assign({}, a); });
     S.adOrig = adKey(S.ad);
@@ -567,7 +571,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
         var p = toCents(getVal("package_total_cents")), a = toCents(getVal("addons_total_cents"));
         if (!isNaN(p) && !isNaN(a)) setVal("grand_total_cents", centsToInput((p || 0) + (a || 0)));
       }
-      if (f === "package_total_cents" || f === "addons_total_cents" || f === "grand_total_cents" || f === "deposit_paid_cents") recalcBalance(b, true);
+      if (f === "package_total_cents" || f === "addons_total_cents" || f === "grand_total_cents" || f === "discount_cents" || f === "deposit_paid_cents") recalcBalance(b, true);
       else onEdit();
       // guest count / add-on quantity: reprice while typing, shortly after the last key
       if (f === "guests") { clearTimeout(S.guestTimer); S.guestTimer = setTimeout(function () { guestsChanged(b); }, 500); }
@@ -632,7 +636,7 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
       birthday_child_name: b.birthday_child_name || "", birthday_child_gender: b.birthday_child_gender || "",
       average_age: b.average_age || "", booking_notes: b.booking_notes || "", status: b.status || "",
       package_total_cents: b.package_total_cents || 0, addons_total_cents: b.addons_total_cents || 0,
-      grand_total_cents: b.grand_total_cents || 0, deposit_paid_cents: b.deposit_paid_cents || 0, balance_due_cents: b.balance_due_cents || 0
+      grand_total_cents: b.grand_total_cents || 0, discount_cents: b.discount_cents || 0, deposit_paid_cents: b.deposit_paid_cents || 0, balance_due_cents: b.balance_due_cents || 0
     };
   }
 
@@ -640,9 +644,9 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
     location_id: "Venue", party_room_id: "Room", date: "Date", start: "Start", end: "End", guests: "Guests", package_id: "Package",
     customer_name: "Name", customer_phone: "Phone", customer_email: "Email", birthday_child_name: "Child", birthday_child_gender: "Gender",
     average_age: "Avg age", booking_notes: "Notes", status: "Status", package_total_cents: "Package price", addons_total_cents: "Add-ons price",
-    grand_total_cents: "Total", deposit_paid_cents: "Paid", balance_due_cents: "Balance", addons: "Add-ons"
+    grand_total_cents: "Total", discount_cents: "Discount", deposit_paid_cents: "Paid", balance_due_cents: "Balance", addons: "Add-ons"
   };
-  var MONEY = { package_total_cents: 1, addons_total_cents: 1, grand_total_cents: 1, deposit_paid_cents: 1, balance_due_cents: 1 };
+  var MONEY = { package_total_cents: 1, addons_total_cents: 1, grand_total_cents: 1, discount_cents: 1, deposit_paid_cents: 1, balance_due_cents: 1 };
 
   function changes() {
     var o = S.orig, out = {};
@@ -976,8 +980,8 @@ font-family:Arial,Helvetica,sans-serif;color:var(--ink);background:var(--bg);min
   }
 
   function recalcBalance(b, quiet) {
-    var total = toCents(getVal("grand_total_cents")) || 0, paid = toCents(getVal("deposit_paid_cents")) || 0;
-    if (!isNaN(total) && !isNaN(paid)) setVal("balance_due_cents", centsToInput(Math.max(0, total - Number(b.discount_cents || 0) - paid)));
+    var total = toCents(getVal("grand_total_cents")) || 0, paid = toCents(getVal("deposit_paid_cents")) || 0, off = toCents(getVal("discount_cents")) || 0;
+    if (!isNaN(total) && !isNaN(paid) && !isNaN(off)) setVal("balance_due_cents", centsToInput(Math.max(0, total - off - paid)));
     onEdit();
   }
 

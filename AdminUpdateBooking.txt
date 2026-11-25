@@ -28,6 +28,7 @@ query AdminUpdateBooking verb=POST {
     int package_total_cents?
     int addons_total_cents?
     int grand_total_cents?
+    int discount_cents?
     int deposit_paid_cents?
     int balance_due_cents?
     text customer_phone?
@@ -261,6 +262,17 @@ query AdminUpdateBooking verb=POST {
           }
         }
       
+        // Promo bookings: staff correct the discount when the guest count or
+        // package changes (it is fixed when the booking is created).
+        conditional {
+          if ($input.discount_cents != null && $input.discount_cents >= 0) {
+            var $data {
+              value = $data
+                |set:"discount_cents":$input.discount_cents
+            }
+          }
+        }
+      
         conditional {
           if ($input.deposit_paid_cents != null) {
             var $data {
@@ -301,6 +313,14 @@ query AdminUpdateBooking verb=POST {
           if ((","|concat:($input.clear|first_notempty:""):""|concat:",":"")|contains:",grand_total_cents,") {
             var $data {
               value = $data|set:"grand_total_cents":0
+            }
+          }
+        }
+      
+        conditional {
+          if ((","|concat:($input.clear|first_notempty:""):""|concat:",":"")|contains:",discount_cents,") {
+            var $data {
+              value = $data|set:"discount_cents":0
             }
           }
         }

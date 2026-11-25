@@ -408,8 +408,24 @@ function send_booking_confirmation {
           
             conditional {
               if (($Booking.discount_cents|first_notnull:0) > 0) {
+                // Anything other than the two $30 discounts is a promo code.
                 var $discount_label {
-                  value = ($Booking.discount_reason == "referral") ? "Referral Discount" : "Welcome Back Discount"
+                  value = "Promo Code "
+                    |concat:($Booking.discount_reason|first_notnull:""):""
+                }
+              
+                conditional {
+                  if ($Booking.discount_reason == "referral") {
+                    var $discount_label {
+                      value = "Referral Discount"
+                    }
+                  }
+                
+                  elseif ($Booking.discount_reason == "repeat_customer" || $Booking.discount_reason == "") {
+                    var $discount_label {
+                      value = "Welcome Back Discount"
+                    }
+                  }
                 }
               
                 var $discount_display {

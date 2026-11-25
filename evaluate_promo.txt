@@ -1,0 +1,75 @@
+// The only place a promo code's discount is worked out (read-only). Rules live
+// in table `promo_codes`; switching a code off = is_active false there.
+// Used by CheckPromo (preview) and CreateBooking / CreateGroupBooking (saved
+// on the booking as discount_cents + discount_reason = the code).
+function evaluate_promo {
+  input {
+    text code
+    text booking_type
+    int location_id
+    int package_id
+    int guests
+  }
+
+  stack {
+    var $code_clean {
+      value = $input.code
+        |first_notnull:""
+        |trim
+        |to_upper
+    }
+  
+    db.query promo_codes {
+      where = $db.promo_codes.code == $code_clean
+      return = {type: "list"}
+    } as $PromoRows
+  
+    db.query package_location_price {
+      where = $db.package_location_price.location_id == $input.location_id && $db.package_location_price.is_active == true
+      return = {type: "list"}
+    } as $Prices
+  
+    api.lambda {
+      code = """
+        const code = $var.code_clean, now = Date.now();
+        // One code can have a rule per booking type (BLACKFRIDAY: group and birthday).
+        const rows = Array.isArray($var.PromoRows) ? $var.PromoRows : [];
+        const p = rows.find(r => r.is_active && r.booking_type === $input.booking_type) || rows.find(r => r.is_active) || rows[0];
+        const list = v => { if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = []; } } return Array.isArray(v) ? v.map(Number) : []; };
+        const no = (message, extra) => ({ ok: false, code, discount_cents: 0, label: '', kind: '', message, needs_package_id: 0, ...(extra || {}) });
+        if (!code) return no('Please enter a promo code.');
+        if (!p || !p.is_active) return no('This promo code is not valid.');
+        if (now < Number(p.starts_at_ms)) return no('This promo code is not active yet.');
+        if (now >= Number(p.ends_at_ms)) return no('This promo code has expired.');
+        if (p.booking_type !== $input.booking_type) return no(p.booking_type === 'birthday_party' ? 'This code is for birthday party bookings only.' : 'This code is for group bookings only.');
+        if (!list(p.location_ids).includes(Number($input.location_id))) return no('This code is not available at this location.');
+        const guests = Number($input.guests) || 0;
+        if (guests < Number(p.min_guests || 0)) return no('This code needs at least ' + p.min_guests + ' guests.');
+        const packages = list(p.package_ids), prices = Array.isArray($var.Prices) ? $var.Prices : [];
+        const price = id => { const r = prices.find(x => Number(x.package_id) === Number(id)); return r ? Number(r.price_pp_cents) || 0 : 0; };
+        if (!packages.includes(Number($input.package_id))) {
+          if (p.kind === 'upgrade_price' && Number(p.base_package_id) > 0 && Number($input.package_id) === Number(p.base_package_id))
+            return no('Choose KOKO Party Max to use this code. You pay the Party Fun price.', { needs_package_id: packages[0] || 0 });
+          return no('This code does not apply to the selected package.');
+        }
+        const unit = price($input.package_id), total = unit * guests;
+        if (total <= 0) return no('This code does not apply to the selected package.');
+        if (total < Number(p.min_package_cents || 0)) return no('Your package total is below the minimum for this code.');
+        let off = 0;
+        if (p.kind === 'percent_capped') {
+          off = Math.round(total * Number(p.percent || 0) / 100);
+          if (Number(p.cap_cents) > 0) off = Math.min(off, Number(p.cap_cents));
+        } else if (p.kind === 'upgrade_price') {
+          const base = price(p.base_package_id);
+          off = base > 0 ? Math.max(0, unit - base) * guests : 0;
+        }
+        off = Math.max(0, Math.min(off, total));
+        if (!off) return no('This code does not apply to this booking.');
+        return { ok: true, code, discount_cents: off, label: (p.label ? p.label + ' ' : '') + code, kind: p.kind, message: '', needs_package_id: 0 };
+        """
+      timeout = 10
+    } as $Result
+  }
+
+  response = $Result
+}

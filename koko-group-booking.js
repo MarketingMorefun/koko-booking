@@ -1215,6 +1215,7 @@ function ensureGroupContactSection(showNow){
     section.appendChild(grid);
   }
   ensureMarketingConsent("groupReviewBtn","groupMarketingConsent");
+  ensurePromoField("groupReviewBtn");
   if(showNow) show("groupContactSection");
 }
 
@@ -1244,6 +1245,94 @@ function ensureMarketingConsent(btnId,inputId){
   wrap.appendChild(box);
   wrap.appendChild(text);
   btn.parentNode.insertBefore(wrap,btn);
+}
+
+// ---- Promo code (e.g. BLACKFRIDAY) ----
+// Field injected above the Review button, no Webflow markup needed. ?promo=CODE
+// in the link prefills it. CheckPromo only previews the discount; CreateGroupBooking
+// works it out again and refuses a bad code, so nothing is charged on trust.
+let _promoChecked=null;
+function promoInput(){return document.getElementById("groupPromoCode")}
+function promoValue(){const i=promoInput();return i?i.value.trim().toUpperCase():""}
+function promoStatus(text,kind){
+  const s=document.getElementById("groupPromoCodeStatus");
+  if(!s)return;
+  s.textContent=text||"";
+  s.style.color=kind==="error"?"#c24b34":kind==="ok"?"#2F8F5B":"#7B6A58";
+}
+function promoKey(){
+  const s=window.groupBookingState;
+  return [promoValue(),s.location_slug,s.package_id,Number(s.guests||0)].join("|");
+}
+function ensurePromoField(btnId){
+  if(promoInput())return;
+  const btn=document.getElementById(btnId);
+  if(!btn||!btn.parentNode)return;
+  const wrap=document.createElement("div");
+  wrap.className="koko-promo-code";
+  wrap.style.cssText="margin:4px 0 16px;font-family:'Maven Pro',Arial,sans-serif;text-align:left;grid-column:1/-1;";
+  const label=document.createElement("label");
+  label.htmlFor="groupPromoCode";
+  label.textContent="Promo code (optional)";
+  label.style.cssText="display:block;margin:0 0 6px;font-size:14px;font-weight:800;color:#2F241C;";
+  const row=document.createElement("div");
+  row.style.cssText="display:flex;gap:10px;align-items:stretch;";
+  const input=document.createElement("input");
+  input.type="text";
+  input.id="groupPromoCode";
+  input.autocomplete="off";
+  input.maxLength=30;
+  input.placeholder="Enter code";
+  input.style.cssText="flex:1 1 auto;min-width:0;height:48px;padding:0 14px;border:1px solid #E8DDCC;border-radius:14px;background:#FFFBF5;color:#2F241C;font:inherit;font-size:16px;text-transform:uppercase;box-sizing:border-box;";
+  const apply=document.createElement("button");
+  apply.type="button";
+  apply.id="groupPromoCodeApply";
+  apply.textContent="Apply";
+  apply.style.cssText="flex:0 0 auto;height:48px;padding:0 22px;border:0;border-radius:14px;background:#221D16;color:#fff;font:inherit;font-size:15px;font-weight:800;cursor:pointer;";
+  const status=document.createElement("div");
+  status.id="groupPromoCodeStatus";
+  status.setAttribute("role","status");
+  status.style.cssText="min-height:18px;margin-top:6px;font-size:13px;line-height:1.4;color:#7B6A58;";
+  row.appendChild(input);
+  row.appendChild(apply);
+  wrap.appendChild(label);
+  wrap.appendChild(row);
+  wrap.appendChild(status);
+  btn.parentNode.insertBefore(wrap,document.querySelector(".koko-marketing-consent")&&document.querySelector(".koko-marketing-consent").parentNode===btn.parentNode?document.querySelector(".koko-marketing-consent"):btn);
+  input.addEventListener("input",function(){_promoChecked=null;promoStatus("");});
+  input.addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();e.stopPropagation();applyPromo();}});
+  apply.addEventListener("click",function(e){e.preventDefault();e.stopPropagation();applyPromo();});
+  const fromLink=(new URLSearchParams(location.search).get("promo")||"").trim().toUpperCase();
+  if(/^[A-Z0-9_-]{2,30}$/.test(fromLink)){
+    input.value=fromLink;
+    promoStatus("Your discount will show on the review step. Can't be combined with other offers.");
+  }
+}
+// true = no code, or the code is good for the current choices.
+async function applyPromo(){
+  const code=promoValue(),s=window.groupBookingState;
+  if(!code){_promoChecked=null;promoStatus("");return true;}
+  if(_promoChecked===promoKey())return true;
+  if(!s.location_slug||!s.package_id||!s.guests){promoStatus("Choose a location, guests and package first.","error");return false;}
+  promoStatus("Checking code...");
+  try{
+    const r=await fetch(`${BASE_URL}/CheckPromo`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:code,booking_type:"group_booking",location_slug:s.location_slug,package_id:s.package_id,guests:Number(s.guests||0)})});
+    const data=await r.json();
+    if(code!==promoValue())return false;
+    if(!r.ok||!data){promoStatus("We couldn't check this code. Please try again.","error");return false;}
+    if(data.ok!==true){promoStatus((data.message||"This promo code is not valid.")+" Remove the code to continue without it.","error");return false;}
+    _promoChecked=promoKey();
+    promoStatus("Code applied: "+money(data.discount_cents)+" off your package.","ok");
+    return true;
+  }catch(e){
+    promoStatus("We couldn't check this code. Please try again.","error");
+    return false;
+  }
+}
+function discountLabel(reason){
+  if(reason==="referral")return"Referral discount";
+  if(!reason||reason==="repeat_customer")return"Welcome back discount";
+  return"Promo code "+String(reason).replace(/[^A-Za-z0-9_-]/g,"");
 }
 
 function validateGroupContact(){
@@ -1282,6 +1371,7 @@ async function createGroupBooking(){
   if(!window.groupBookingState.start_ts || !window.groupBookingState.end_ts) return _bail("Please select a time slot first.");
   if(!window.groupBookingState.package_id) return _bail("Please select a package first.");
   if(!validateGroupContact()){_groupBookingInProgress=false;return;}
+  if(!(await applyPromo())) return _bail("Please check your promo code, or remove it to continue.");
   const btn=$("groupReviewBtn");
   if(btn){btn.disabled=true;btn.style.pointerEvents="none";btn.style.opacity=".75";btn.textContent="Creating booking...";}
   msg("Creating booking...");
@@ -1301,6 +1391,7 @@ async function createGroupBooking(){
       customer_email:window.groupBookingState.customer_email,
       booking_notes:window.groupBookingState.booking_notes,
       referral_code:window.groupBookingState.referral_code,
+      promo_code:promoValue(),
       marketing_consent:window.groupBookingState.marketing_consent===true,
       utm_source:attribution.utm_source,
       utm_medium:attribution.utm_medium,
@@ -1463,7 +1554,7 @@ function injectDiscountBanner(b){
   if(discountCents<=0) return;
   const anchor=$("groupReviewGrandTotal");
   if(!anchor||!anchor.parentNode) return;
-  const label=b.discount_reason==="referral" ? "Referral discount" : "Welcome back discount";
+  const label=discountLabel(b.discount_reason);
   const box=document.createElement("div");
   box.id="kokoGroupDiscountBanner";
   box.style.cssText="margin-top:8px;padding:10px 14px;border-radius:12px;background:#EAF8EF;color:#2F8F5B;font-family:'Maven Pro',Arial,sans-serif;font-size:14px;font-weight:800;display:flex;justify-content:space-between;align-items:center;";
@@ -1550,6 +1641,7 @@ function init(){
   setupDate();
   setupGuestStepper();
   ensureMarketingConsent("groupReviewBtn","groupMarketingConsent");
+  ensurePromoField("groupReviewBtn");
   syncBasics();
   hide("groupSlotsSection");
   hide("groupPackagesSection");

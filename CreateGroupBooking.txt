@@ -20,6 +20,7 @@ query CreateGroupBooking verb=POST {
         text customer_email
         text booking_notes?
         text referral_code?
+        text promo_code?
       
         // ---- Booking source / marketing channel (read-only, for reporting) ----
         text utm_source?
@@ -116,6 +117,20 @@ query CreateGroupBooking verb=POST {
         }
       
         var $referral_code_used {
+          value = ""
+        }
+      
+        // Response uses this, not $Booking.id: reading .id off a null booking
+        // turned every validation message into ERROR_FATAL.
+        var $booking_id {
+          value = null
+        }
+      
+        var $promo_code_in {
+          value = $input.payload.promo_code|first_notempty:""|trim
+        }
+      
+        var $promo_code_applied {
           value = ""
         }
       
@@ -454,6 +469,47 @@ query CreateGroupBooking verb=POST {
           }
         }
       
+        // ---- Promo code (table promo_codes) ----
+        // A bad code stops the booking with a clear message instead of quietly
+        // charging full price. A valid one replaces the $30 credit / referral
+        // discount: the customer's credit is left untouched.
+        conditional {
+          if ($error_message == null && $promo_code_in != "") {
+            function.run evaluate_promo {
+              input = {
+                code        : $promo_code_in
+                booking_type: "group_booking"
+                location_id : $Location.id
+                package_id  : $input.payload.package_id
+                guests      : $input.payload.guests
+              }
+            } as $Promo
+          
+            conditional {
+              if ($Promo.ok) {
+                var $discount_cents {
+                  value = $Promo.discount_cents
+                }
+              
+                var $discount_reason {
+                  value = $Promo.code
+                }
+              
+                var $promo_code_applied {
+                  value = $Promo.code
+                }
+              }
+            
+              else {
+                var $error_message {
+                  value = $Promo.message
+                    |first_notempty:"This promo code is not valid."
+                }
+              }
+            }
+          }
+        }
+      
         // ============================================================
         // 8.5) 推荐 / 复购折扣 —— 就放在这里(所有校验都通过之后,建单之前)
         // 而不是放在最前面,是因为一旦占用一张 credit(标成 pending),就必须
@@ -468,6 +524,14 @@ query CreateGroupBooking verb=POST {
               where = $db.customer_credits.customer_email == $customer_email_normalised && $db.customer_credits.status == "available"
               return = {type: "single"}
             } as $AvailableCredit
+          
+            conditional {
+              if ($promo_code_applied != "") {
+                var $AvailableCredit {
+                  value = null
+                }
+              }
+            }
           
             conditional {
               if ($AvailableCredit != null) {
@@ -508,7 +572,7 @@ query CreateGroupBooking verb=POST {
                 } as $ReservedCredit
               }
             
-              elseif ($input.payload.referral_code != null && $input.payload.referral_code != "") {
+              elseif ($promo_code_applied == "" && $input.payload.referral_code != null && $input.payload.referral_code != "") {
                 db.query bookings {
                   where = $db.bookings.referral_code == $input.payload.referral_code && ($db.bookings.status == "deposit_paid" || $db.bookings.status == "paid")
                   return = {type: "single"}
@@ -591,6 +655,10 @@ query CreateGroupBooking verb=POST {
               }
             } as $Booking
           
+            var $booking_id {
+              value = $Booking.id
+            }
+          
             conditional {
               if ($applied_credit_id > 0) {
                 db.patch customer_credits {
@@ -638,7 +706,7 @@ query CreateGroupBooking verb=POST {
   response = {
     error_message      : $error_message
     booking            : $Booking
-    booking_id         : $Booking.id
+    booking_id         : $booking_id
     package_total_cents: $package_total_cents
     addons_total_cents : $addons_total_cents
     grand_total_cents  : $grand_total_cents

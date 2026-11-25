@@ -1,0 +1,48 @@
+// Shows a promo code's discount before the booking is created (read-only).
+// CreateBooking / CreateGroupBooking work it out again themselves.
+query CheckPromo verb=POST {
+  api_group = "KOKO Booking"
+
+  input {
+    text code
+    text booking_type
+    text location_slug filters=trim
+    int package_id
+    int guests
+  }
+
+  stack {
+    var $Promo {
+      value = {
+        ok              : false
+        code            : ""
+        discount_cents  : 0
+        label           : ""
+        kind            : ""
+        message         : "Location not found"
+        needs_package_id: 0
+      }
+    }
+  
+    db.get Locations {
+      field_name = "slug"
+      field_value = $input.location_slug
+    } as $Location
+  
+    conditional {
+      if ($Location != null) {
+        function.run evaluate_promo {
+          input = {
+            code        : $input.code
+            booking_type: $input.booking_type
+            location_id : $Location.id
+            package_id  : $input.package_id
+            guests      : $input.guests
+          }
+        } as $Promo
+      }
+    }
+  }
+
+  response = $Promo
+}

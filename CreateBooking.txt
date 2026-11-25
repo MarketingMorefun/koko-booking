@@ -27,6 +27,7 @@ query CreateBooking verb=POST {
         text average_age?
         text booking_notes?
         text referral_code?
+        text promo_code?
         timestamp start_ts
         timestamp end_ts
       
@@ -132,6 +133,14 @@ query CreateBooking verb=POST {
         }
       
         var $referral_code_used {
+          value = ""
+        }
+      
+        var $promo_code_in {
+          value = $input.payload.promo_code|first_notempty:""|trim
+        }
+      
+        var $promo_code_applied {
           value = ""
         }
       
@@ -401,6 +410,47 @@ query CreateBooking verb=POST {
           }
         }
       
+        // ---- Promo code (table promo_codes) ----
+        // A bad code stops the booking with a clear message instead of quietly
+        // charging full price. A valid one replaces the $30 credit / referral
+        // discount: the customer's credit is left untouched.
+        conditional {
+          if ($error_message == null && $promo_code_in != "") {
+            function.run evaluate_promo {
+              input = {
+                code        : $promo_code_in
+                booking_type: "birthday_party"
+                location_id : $Locations1.id
+                package_id  : $input.payload.package_id
+                guests      : $input.payload.guests
+              }
+            } as $Promo
+          
+            conditional {
+              if ($Promo.ok) {
+                var $discount_cents {
+                  value = $Promo.discount_cents
+                }
+              
+                var $discount_reason {
+                  value = $Promo.code
+                }
+              
+                var $promo_code_applied {
+                  value = $Promo.code
+                }
+              }
+            
+              else {
+                var $error_message {
+                  value = $Promo.message
+                    |first_notempty:"This promo code is not valid."
+                }
+              }
+            }
+          }
+        }
+      
         conditional {
           if ($error_message == null) {
             var $grand_total_cents {
@@ -419,6 +469,14 @@ query CreateBooking verb=POST {
               where = $db.customer_credits.customer_email == $customer_email_normalised && $db.customer_credits.status == "available"
               return = {type: "single"}
             } as $AvailableCredit
+          
+            conditional {
+              if ($promo_code_applied != "") {
+                var $AvailableCredit {
+                  value = null
+                }
+              }
+            }
           
             conditional {
               if ($AvailableCredit != null) {
@@ -459,7 +517,7 @@ query CreateBooking verb=POST {
                 } as $ReservedCredit
               }
             
-              elseif ($input.payload.referral_code != null && $input.payload.referral_code != "") {
+              elseif ($promo_code_applied == "" && $input.payload.referral_code != null && $input.payload.referral_code != "") {
                 db.query bookings {
                   where = $db.bookings.referral_code == $input.payload.referral_code && ($db.bookings.status == "deposit_paid" || $db.bookings.status == "paid")
                   return = {type: "single"}

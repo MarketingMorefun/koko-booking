@@ -867,6 +867,99 @@ function ensureMarketingConsent(btnId,inputId){
   wrap.appendChild(text);
   btn.parentNode.insertBefore(wrap,btn);
 }
+// ---- Promo code (e.g. BLACKFRIDAY) ----
+// Field injected above the Review button, no Webflow markup needed. ?promo=CODE
+// in the link prefills it. CheckPromo only previews the discount; CreateBooking
+// works it out again and refuses a bad code, so nothing is charged on trust.
+let _promoChecked=null;
+function promoInput(){return document.getElementById("promoCode")}
+function promoValue(){const i=promoInput();return i?i.value.trim().toUpperCase():""}
+function promoStatus(text,kind){
+  const s=document.getElementById("promoCodeStatus");
+  if(!s)return;
+  s.textContent=text||"";
+  s.style.color=kind==="error"?"#c24b34":kind==="ok"?"#2F8F5B":"#7B6A58";
+}
+function promoKey(){
+  const s=window.bookingState;
+  return [promoValue(),s.location_slug,s.package_id,Number(s.guests||0)].join("|");
+}
+function ensurePromoField(btnId){
+  if(promoInput())return;
+  const btn=document.getElementById(btnId);
+  if(!btn||!btn.parentNode)return;
+  const wrap=document.createElement("div");
+  wrap.className="koko-promo-code";
+  wrap.style.cssText="margin:4px 0 16px;font-family:'Maven Pro',Arial,sans-serif;text-align:left;grid-column:1/-1;";
+  const label=document.createElement("label");
+  label.htmlFor="promoCode";
+  label.textContent="Promo code (optional)";
+  label.style.cssText="display:block;margin:0 0 6px;font-size:14px;font-weight:800;color:#2F241C;";
+  const row=document.createElement("div");
+  row.style.cssText="display:flex;gap:10px;align-items:stretch;";
+  const input=document.createElement("input");
+  input.type="text";
+  input.id="promoCode";
+  input.autocomplete="off";
+  input.maxLength=30;
+  input.placeholder="Enter code";
+  input.style.cssText="flex:1 1 auto;min-width:0;height:48px;padding:0 14px;border:1px solid #E8DDCC;border-radius:14px;background:#FFFBF5;color:#2F241C;font:inherit;font-size:16px;text-transform:uppercase;box-sizing:border-box;";
+  const apply=document.createElement("button");
+  apply.type="button";
+  apply.id="promoCodeApply";
+  apply.textContent="Apply";
+  apply.style.cssText="flex:0 0 auto;height:48px;padding:0 22px;border:0;border-radius:14px;background:#221D16;color:#fff;font:inherit;font-size:15px;font-weight:800;cursor:pointer;";
+  const status=document.createElement("div");
+  status.id="promoCodeStatus";
+  status.setAttribute("role","status");
+  status.style.cssText="min-height:18px;margin-top:6px;font-size:13px;line-height:1.4;color:#7B6A58;";
+  row.appendChild(input);
+  row.appendChild(apply);
+  wrap.appendChild(label);
+  wrap.appendChild(row);
+  wrap.appendChild(status);
+  btn.parentNode.insertBefore(wrap,document.querySelector(".koko-marketing-consent")&&document.querySelector(".koko-marketing-consent").parentNode===btn.parentNode?document.querySelector(".koko-marketing-consent"):btn);
+  input.addEventListener("input",function(){_promoChecked=null;promoStatus("");});
+  input.addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();e.stopPropagation();applyPromo();}});
+  apply.addEventListener("click",function(e){e.preventDefault();e.stopPropagation();applyPromo();});
+  const fromLink=(new URLSearchParams(location.search).get("promo")||"").trim().toUpperCase();
+  if(/^[A-Z0-9_-]{2,30}$/.test(fromLink)){
+    input.value=fromLink;
+    promoStatus("Your discount will show on the review step. Can't be combined with other offers.");
+  }
+}
+// true = no code, or the code is good for the current choices.
+async function applyPromo(){
+  const code=promoValue(),s=window.bookingState;
+  if(!code){_promoChecked=null;promoStatus("");return true;}
+  if(_promoChecked===promoKey())return true;
+  if(!s.location_slug||!s.package_id||!s.guests){promoStatus("Choose a location, guests and package first.","error");return false;}
+  promoStatus("Checking code...");
+  try{
+    const r=await fetch(`${BASE_URL}/CheckPromo`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:code,booking_type:"birthday_party",location_slug:s.location_slug,package_id:s.package_id,guests:Number(s.guests||0)})});
+    const data=await r.json();
+    if(code!==promoValue())return false;
+    if(!r.ok||!data){promoStatus("We couldn't check this code. Please try again.","error");return false;}
+    if(data.ok!==true&&Number(data.needs_package_id)===PACKAGE_IDS.max){
+      // Upgrade code on Party Fun: same price, so move the customer up to Party Max.
+      await getQuote("max",false);
+      if(s.package_id!==PACKAGE_IDS.max||!s.quote||Number(s.quote.package_id)!==PACKAGE_IDS.max){promoStatus("Please choose KOKO Party Max to use this code.","error");return false;}
+      return await applyPromo();
+    }
+    if(data.ok!==true){promoStatus((data.message||"This promo code is not valid.")+" Remove the code to continue without it.","error");return false;}
+    _promoChecked=promoKey();
+    promoStatus("Code applied: "+money(data.discount_cents)+" off."+(data.kind==="upgrade_price"?" You get KOKO Party Max at the Party Fun price.":""),"ok");
+    return true;
+  }catch(e){
+    promoStatus("We couldn't check this code. Please try again.","error");
+    return false;
+  }
+}
+function discountLabel(reason){
+  if(reason==="referral")return"Referral discount";
+  if(!reason||reason==="repeat_customer")return"Welcome back discount";
+  return"Promo code "+String(reason).replace(/[^A-Za-z0-9_-]/g,"");
+}
 function validateContact(){
 const name=val("customerName").trim(),phone=val("customerPhone").trim(),email=val("customerEmail").trim();
 const childName=val("birthdayChildName").trim();
@@ -965,7 +1058,7 @@ const discountCents=Number(b.discount_cents||0);
 if(discountCents<=0)return;
 const anchor=$("reviewGrandTotal");
 if(!anchor||!anchor.parentNode)return;
-const label=b.discount_reason==="referral"?"Referral discount":"Welcome back discount";
+const label=discountLabel(b.discount_reason);
 const box=document.createElement("div");
 box.id="kokoDiscountBanner";
 box.style.cssText="margin-top:8px;padding:10px 14px;border-radius:12px;background:#EAF8EF;color:#2F8F5B;font-family:'Maven Pro',Arial,sans-serif;font-size:14px;font-weight:800;display:flex;justify-content:space-between;align-items:center;";
@@ -1003,6 +1096,7 @@ if(!window.bookingState.party_room_id||!window.bookingState.start_ts||!window.bo
 if(!window.bookingState.package_id)return _bail("Please select a package first.");
 if(!window.bookingState.quote)return _bail("Please wait for the quote to load first.");
 if(!validateContact()){_bookingInProgress=false;return;}
+if(!(await applyPromo()))return _bail("Please check your promo code, or remove it to continue.");
 const btn=clickedBtn||$("createBookingBtn")||findActionButton(document,["review","create booking","review booking"],"#createBookingBtn,[data-koko-action='create-booking'],[data-koko-action='review-booking']");
 if(btn){btn.style.pointerEvents="none";btn.style.opacity=".75";btn.textContent="Creating booking..."}
 msg("Creating booking...");
@@ -1010,7 +1104,7 @@ try{
 const hasPartyRoomAddon=window.bookingState.addons.some(a=>Number(a.addon_id)===7&&Number(a.qty||0)>0);
 const effectiveEndTs=hasPartyRoomAddon?Number(window.bookingState.end_ts)+3600000:window.bookingState.end_ts;
 const attribution=window.kokoGetAttribution?window.kokoGetAttribution():{};
-const payload=compactPayload({location_slug:window.bookingState.location_slug,date:window.bookingState.date,guests:Number(window.bookingState.guests||0),party_room_id:window.bookingState.party_room_id,start_ts:window.bookingState.start_ts,end_ts:effectiveEndTs,package_id:window.bookingState.package_id,addons:quoteAddons(),customer_name:window.bookingState.customer_name,customer_phone:window.bookingState.customer_phone,customer_email:window.bookingState.customer_email,birthday_child_name:window.bookingState.birthday_child_name,birthday_child_gender:window.bookingState.birthday_child_gender,average_age:window.bookingState.average_age?Number(window.bookingState.average_age):undefined,booking_notes:window.bookingState.booking_notes,referral_code:window.bookingState.referral_code,marketing_consent:window.bookingState.marketing_consent===true,utm_source:attribution.utm_source,utm_medium:attribution.utm_medium,utm_campaign:attribution.utm_campaign,landing_referrer:attribution.landing_referrer,entry_page:attribution.entry_page});
+const payload=compactPayload({location_slug:window.bookingState.location_slug,date:window.bookingState.date,guests:Number(window.bookingState.guests||0),party_room_id:window.bookingState.party_room_id,start_ts:window.bookingState.start_ts,end_ts:effectiveEndTs,package_id:window.bookingState.package_id,addons:quoteAddons(),customer_name:window.bookingState.customer_name,customer_phone:window.bookingState.customer_phone,customer_email:window.bookingState.customer_email,birthday_child_name:window.bookingState.birthday_child_name,birthday_child_gender:window.bookingState.birthday_child_gender,average_age:window.bookingState.average_age?Number(window.bookingState.average_age):undefined,booking_notes:window.bookingState.booking_notes,referral_code:window.bookingState.referral_code,promo_code:promoValue(),marketing_consent:window.bookingState.marketing_consent===true,utm_source:attribution.utm_source,utm_medium:attribution.utm_medium,utm_campaign:attribution.utm_campaign,landing_referrer:attribution.landing_referrer,entry_page:attribution.entry_page});
 const r=await fetch(`${BASE_URL}/CreateBooking`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload})});
 const text=await r.text();
 if(!text.trim())return msg("CreateBooking API returned an empty response.",true);
@@ -1146,6 +1240,7 @@ function init(){
 setupDate();
 setupGuestInput();
 ensureMarketingConsent("createBookingBtn","marketingConsent");
+ensurePromoField("createBookingBtn");
 const phoneField=field("customerPhone");
 if(phoneField){
 phoneField.placeholder="0400000000";
