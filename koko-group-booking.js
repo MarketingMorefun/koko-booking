@@ -4,6 +4,68 @@ const DEPOSIT_CENTS=5000;
 const SURCHARGE_CENTS=150;
 const FULL_FEE_PER_MILLE=18; // 1.8% booking fee when paying in full
 const PAYABLE_NOW_CENTS=DEPOSIT_CENTS+SURCHARGE_CENTS;
+// Customers never see server wording (Xano, API, JSON...): it goes to the console.
+const ERROR_TRY_AGAIN="Something went wrong. Please refresh the page and try again.";
+function customerError(text){
+  const s=String(text||"");
+  if(!/xano|\bapi\b|json|whoa|rate limit|your plan|param:|error_code|error_fatal|failed to fetch|load failed|networkerror|unexpected (token|end)|undefined|is not a function|\(\d{3}\)|booking id not found|payment url|syntaxerror|typeerror/i.test(s))return s;
+  console.error("Booking error:",s);
+  return ERROR_TRY_AGAIN;
+}
+// Xano's free plan answers 429 above 10 requests per 20 seconds (for the whole
+// site). A 429 is refused before the endpoint runs, so repeating it, even a
+// create or confirm, can't do anything twice. Only 429 is retried.
+const BUSY_WAITS_MS=[4000,8000,12000];
+const BUSY_FINAL="We're very busy right now. Please refresh the page and try again in a moment.";
+// A newer search replaces an older one that is still waiting to retry.
+const REPLACEABLE=/\/(Availability|GroupAvailability|Quote|GroupQuote|addons|GroupAddons)(\?|$)/;
+// Add-on lists, and a quote for exactly the same choices, are reused for a minute.
+const CACHEABLE=/\/(addons|GroupAddons|Quote|GroupQuote)(\?|$)/;
+const CACHE_MS=60000;
+const REPLACED="Replaced by a newer request.";
+const _busyWaiting={},_apiCache={};
+let _busyCount=0;
+function busyNotice(change){
+  _busyCount=Math.max(0,_busyCount+change);
+  let n=document.getElementById("kokoBusyNotice");
+  if(!_busyCount){if(n)n.remove();return;}
+  if(n)return;
+  n=document.createElement("div");
+  n.id="kokoBusyNotice";
+  n.setAttribute("role","status");
+  n.textContent="We're very busy right now. Trying again automatically, please stay on this page…";
+  n.style.cssText="position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:2147483000;width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;padding:12px 18px;border-radius:14px;background:#221D16;color:#fff;font-size:14px;line-height:1.4;font-weight:600;text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.25);";
+  document.body.appendChild(n);
+}
+async function apiFetch(url,options){
+  const cacheable=CACHEABLE.test(url);
+  const cacheKey=url+" "+String(options&&options.body||""),hit=_apiCache[cacheKey];
+  if(cacheable&&hit&&Date.now()-hit.at<CACHE_MS)return new Response(hit.text,{status:200,headers:{"Content-Type":"application/json"}});
+  const key=REPLACEABLE.test(url)?url.split("?")[0]:"";
+  if(key&&_busyWaiting[key])_busyWaiting[key]();
+  for(let i=0;;i++){
+    const r=await fetch(url,options);
+    if(r.status!==429){
+      if(cacheable&&r.ok){const copy=await r.clone().text();if(copy.trim()&&copy.indexOf('"error_message":"')<0)_apiCache[cacheKey]={text:copy,at:Date.now()};}
+      return r;
+    }
+    if(i>=BUSY_WAITS_MS.length)return new Response(JSON.stringify({message:BUSY_FINAL,error_message:BUSY_FINAL}),{status:429,headers:{"Content-Type":"application/json"}});
+    busyNotice(1);
+    let cancel=null;
+    try{
+      await new Promise(function(resolve,reject){
+        const t=setTimeout(resolve,BUSY_WAITS_MS[i]*(1+Math.random()*0.35));
+        if(!key)return;
+        if(_busyWaiting[key])_busyWaiting[key]();
+        cancel=function(){clearTimeout(t);reject(new Error(REPLACED));};
+        _busyWaiting[key]=cancel;
+      });
+    }finally{
+      if(cancel&&_busyWaiting[key]===cancel)delete _busyWaiting[key];
+      busyNotice(-1);
+    }
+  }
+}
 const MIN_ADVANCE_MS=72*60*60*1000;
 const DEFAULT_SESSION_MINUTES=30;
 
@@ -16,7 +78,7 @@ window.kokoPackageIncludes=function(p){
 var canonicalPackagesPromise;
 window.kokoLoadPackageCatalogue=function(){
   if(!canonicalPackagesPromise){
-    canonicalPackagesPromise=fetch(BASE_URL+"/BookingPackageCatalogue").then(function(r){if(!r.ok)throw new Error("Package details are unavailable. Please try again.");return r.json();}).then(function(d){if(!Array.isArray(d.packages))throw new Error("Package details are unavailable.");window.kokoPackageCatalogue=d.packages;return d.packages;}).catch(function(e){canonicalPackagesPromise=null;throw e;});
+    canonicalPackagesPromise=apiFetch(BASE_URL+"/BookingPackageCatalogue").then(function(r){if(!r.ok)throw new Error("Package details are unavailable. Please try again.");return r.json();}).then(function(d){if(!Array.isArray(d.packages))throw new Error("Package details are unavailable.");window.kokoPackageCatalogue=d.packages;return d.packages;}).catch(function(e){canonicalPackagesPromise=null;throw e;});
   }
   return canonicalPackagesPromise;
 };
@@ -153,8 +215,8 @@ function normText(text){
 
 function msg(text,isErr){
   const node=$("groupMessage");
-  if(!node) return;
-  node.textContent=text || "";
+  if(!node || text===REPLACED) return;
+  node.textContent=(isErr?customerError(text):text) || "";
   node.style.color=isErr ? "#C24B34" : "#2F8F5B";
 }
 
@@ -299,7 +361,7 @@ async function loadGroupAvailability(){
   if(!payload.guests) return msg("Please enter guest count.",true);
   msg("Loading availability...");
   try{
-    const r=await fetch(BASE_URL + "/GroupAvailability",{
+    const r=await apiFetch(BASE_URL + "/GroupAvailability",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({payload:payload})
@@ -775,7 +837,7 @@ async function loadGroupAddons(){
   clear(list);
   if(!window.groupBookingState.location_slug) return;
   try{
-    const r=await fetch(BASE_URL + "/GroupAddons?location_slug=" + encodeURIComponent(window.groupBookingState.location_slug));
+    const r=await apiFetch(BASE_URL + "/GroupAddons?location_slug=" + encodeURIComponent(window.groupBookingState.location_slug));
     const text=await r.text();
     const data=text.trim() ? JSON.parse(text) : null;
     if(!r.ok || !data || data.error_message){
@@ -807,7 +869,7 @@ async function checkGroupRoomExtension(roomExtEl){
   if(!end_ts){roomExtEl.textContent="⚠️ Please select a time slot first.";roomExtEl.style.color="#B86816";return;}
   roomExtEl.textContent="Checking availability...";roomExtEl.style.color="#7B6A58";
   try{
-    const r=await fetch(BASE_URL+"/Availability",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload:{location_slug,date,guests:Number(guests)||10}})});
+    const r=await apiFetch(BASE_URL+"/Availability",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload:{location_slug,date,guests:Number(guests)||10}})});
     const data=await r.json();
     const roomSlots=data.room_slots||[];
     const extEnd=Number(end_ts)+3600000;
@@ -1113,7 +1175,7 @@ async function loadGroupQuote(){
       guests:window.groupBookingState.guests,
       addons:quoteAddons()
     };
-    const r=await fetch(BASE_URL + "/GroupQuote",{
+    const r=await apiFetch(BASE_URL + "/GroupQuote",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({payload:payload})
@@ -1316,7 +1378,7 @@ async function applyPromo(){
   if(!s.location_slug||!s.package_id||!s.guests){promoStatus("Choose a location, guests and package first.","error");return false;}
   promoStatus("Checking code...");
   try{
-    const r=await fetch(`${BASE_URL}/CheckPromo`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:code,booking_type:"group_booking",location_slug:s.location_slug,package_id:s.package_id,guests:Number(s.guests||0)})});
+    const r=await apiFetch(`${BASE_URL}/CheckPromo`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:code,booking_type:"group_booking",location_slug:s.location_slug,package_id:s.package_id,guests:Number(s.guests||0)})});
     const data=await r.json();
     if(code!==promoValue())return false;
     if(!r.ok||!data){promoStatus("We couldn't check this code. Please try again.","error");return false;}
@@ -1399,7 +1461,7 @@ async function createGroupBooking(){
       landing_referrer:attribution.landing_referrer,
       entry_page:attribution.entry_page
     };
-    const r=await fetch(BASE_URL + "/CreateGroupBooking",{
+    const r=await apiFetch(BASE_URL + "/CreateGroupBooking",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({payload:payload})
@@ -1591,7 +1653,7 @@ async function confirmGroupBooking(){
   msg(groupPayFull()?"Preparing full payment...":"Preparing deposit payment...");
   try{
     const payload={booking_id:id,booking:booking,payment_option:groupPayFull()?"full":"deposit"};
-    const r=await fetch(BASE_URL + "/ConfirmGroupBooking",{
+    const r=await apiFetch(BASE_URL + "/ConfirmGroupBooking",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({payload:payload})

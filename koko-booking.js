@@ -5,6 +5,68 @@ const SURCHARGE_CENTS=150;
 const PAYABLE_NOW_CENTS=DEPOSIT_CENTS+SURCHARGE_CENTS;
 const MIN_PARTY_SIZE=10;
 const MIN_ADVANCE_MS=259200000;
+// Customers never see server wording (Xano, API, JSON...): it goes to the console.
+const ERROR_TRY_AGAIN="Something went wrong. Please refresh the page and try again.";
+function customerError(text){
+  const s=String(text||"");
+  if(!/xano|\bapi\b|json|whoa|rate limit|your plan|param:|error_code|error_fatal|failed to fetch|load failed|networkerror|unexpected (token|end)|undefined|is not a function|\(\d{3}\)|booking id not found|payment url|syntaxerror|typeerror/i.test(s))return s;
+  console.error("Booking error:",s);
+  return ERROR_TRY_AGAIN;
+}
+// Xano's free plan answers 429 above 10 requests per 20 seconds (for the whole
+// site). A 429 is refused before the endpoint runs, so repeating it, even a
+// create or confirm, can't do anything twice. Only 429 is retried.
+const BUSY_WAITS_MS=[4000,8000,12000];
+const BUSY_FINAL="We're very busy right now. Please refresh the page and try again in a moment.";
+// A newer search replaces an older one that is still waiting to retry.
+const REPLACEABLE=/\/(Availability|GroupAvailability|Quote|GroupQuote|addons|GroupAddons)(\?|$)/;
+// Add-on lists, and a quote for exactly the same choices, are reused for a minute.
+const CACHEABLE=/\/(addons|GroupAddons|Quote|GroupQuote)(\?|$)/;
+const CACHE_MS=60000;
+const REPLACED="Replaced by a newer request.";
+const _busyWaiting={},_apiCache={};
+let _busyCount=0;
+function busyNotice(change){
+  _busyCount=Math.max(0,_busyCount+change);
+  let n=document.getElementById("kokoBusyNotice");
+  if(!_busyCount){if(n)n.remove();return;}
+  if(n)return;
+  n=document.createElement("div");
+  n.id="kokoBusyNotice";
+  n.setAttribute("role","status");
+  n.textContent="We're very busy right now. Trying again automatically, please stay on this page…";
+  n.style.cssText="position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:2147483000;width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;padding:12px 18px;border-radius:14px;background:#221D16;color:#fff;font-size:14px;line-height:1.4;font-weight:600;text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.25);";
+  document.body.appendChild(n);
+}
+async function apiFetch(url,options){
+  const cacheable=CACHEABLE.test(url);
+  const cacheKey=url+" "+String(options&&options.body||""),hit=_apiCache[cacheKey];
+  if(cacheable&&hit&&Date.now()-hit.at<CACHE_MS)return new Response(hit.text,{status:200,headers:{"Content-Type":"application/json"}});
+  const key=REPLACEABLE.test(url)?url.split("?")[0]:"";
+  if(key&&_busyWaiting[key])_busyWaiting[key]();
+  for(let i=0;;i++){
+    const r=await fetch(url,options);
+    if(r.status!==429){
+      if(cacheable&&r.ok){const copy=await r.clone().text();if(copy.trim()&&copy.indexOf('"error_message":"')<0)_apiCache[cacheKey]={text:copy,at:Date.now()};}
+      return r;
+    }
+    if(i>=BUSY_WAITS_MS.length)return new Response(JSON.stringify({message:BUSY_FINAL,error_message:BUSY_FINAL}),{status:429,headers:{"Content-Type":"application/json"}});
+    busyNotice(1);
+    let cancel=null;
+    try{
+      await new Promise(function(resolve,reject){
+        const t=setTimeout(resolve,BUSY_WAITS_MS[i]*(1+Math.random()*0.35));
+        if(!key)return;
+        if(_busyWaiting[key])_busyWaiting[key]();
+        cancel=function(){clearTimeout(t);reject(new Error(REPLACED));};
+        _busyWaiting[key]=cancel;
+      });
+    }finally{
+      if(cancel&&_busyWaiting[key]===cancel)delete _busyWaiting[key];
+      busyNotice(-1);
+    }
+  }
+}
 const PACKAGE_IDS={joy:10,fun:5,max:1};
 const LOCATION_GUEST_LIMITS={Hurstville:16,Hornsby:16,Haymarket:16,Burwood:16,Townhall_614:20};
 const LOCATION_NAMES={
@@ -50,7 +112,7 @@ return `${locName(slug)} can only accept up to ${limit} guests for birthday part
 }
 function unitName(t){return t?String(t).replace(/_/g," "):"item"}
 function money(cents){return "$"+(Number(cents||0)/100).toFixed(2)}
-function msg(text,isErr){const el=$("bookingMessage");if(!el)return;el.textContent=text||"";el.style.color=isErr?"#c24b34":"#2F8F5B"}
+function msg(text,isErr){const el=$("bookingMessage");if(!el||text===REPLACED)return;el.textContent=(isErr?customerError(text):text)||"";el.style.color=isErr?"#c24b34":"#2F8F5B"}
 function show(id,scroll){const el=$(id);if(!el)return;el.style.display="block";el.style.visibility="visible";el.style.opacity="1";if(scroll)setTimeout(()=>{const y=el.getBoundingClientRect().top+window.pageYOffset-120;window.scrollTo({top:Math.max(y,0),behavior:"smooth"})},50)}
 function hide(id){const el=$(id);if(el)el.style.display="none"}
 function clear(el){if(!el)return;while(el.firstChild)el.removeChild(el.firstChild)}
@@ -513,7 +575,7 @@ return msg(maxGuestsMessage(rawLoc,max),true);
 }
 msg("Checking availability...");
 try{
-const r=await fetch(`${BASE_URL}/Availability`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload:{location_slug:rawLoc,date:d,guests:g}})});
+const r=await apiFetch(`${BASE_URL}/Availability`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload:{location_slug:rawLoc,date:d,guests:g}})});
 const text=await r.text();
 if(!text.trim())return msg("Availability API returned an empty response.",true);
 const data=JSON.parse(text);
@@ -562,7 +624,7 @@ if(!list)return;
 clear(list);
 if(!window.bookingState.location_slug)return msg("Please select a location first.",true);
 try{
-const r=await fetch(`${BASE_URL}/addons?location_slug=${encodeURIComponent(window.bookingState.location_slug)}`,{method:"GET",headers:{"Content-Type":"application/json"}});
+const r=await apiFetch(`${BASE_URL}/addons?location_slug=${encodeURIComponent(window.bookingState.location_slug)}`,{method:"GET",headers:{"Content-Type":"application/json"}});
 const text=await r.text();
 if(!text.trim()){
 list.appendChild(el("p","No add-ons available.",{color:"#7B6A58",margin:"0"}));
@@ -819,7 +881,7 @@ updatePackageVisibility();
 return msg(`${packageName(window.bookingState.package_id)} is not available for this location and party size.`,true);
 }
 msg("Loading quote...");
-const r=await fetch(`${BASE_URL}/Quote`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload:{location_slug:window.bookingState.location_slug,package_id:window.bookingState.package_id,guests:window.bookingState.guests,addons:quoteAddons()}})});
+const r=await apiFetch(`${BASE_URL}/Quote`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload:{location_slug:window.bookingState.location_slug,package_id:window.bookingState.package_id,guests:window.bookingState.guests,addons:quoteAddons()}})});
 const text=await r.text();
 if(!text.trim())return msg("Quote API returned an empty response.",true);
 const data=JSON.parse(text);
@@ -936,7 +998,7 @@ async function applyPromo(){
   if(!s.location_slug||!s.package_id||!s.guests){promoStatus("Choose a location, guests and package first.","error");return false;}
   promoStatus("Checking code...");
   try{
-    const r=await fetch(`${BASE_URL}/CheckPromo`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:code,booking_type:"birthday_party",location_slug:s.location_slug,package_id:s.package_id,guests:Number(s.guests||0)})});
+    const r=await apiFetch(`${BASE_URL}/CheckPromo`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:code,booking_type:"birthday_party",location_slug:s.location_slug,package_id:s.package_id,guests:Number(s.guests||0)})});
     const data=await r.json();
     if(code!==promoValue())return false;
     if(!r.ok||!data){promoStatus("We couldn't check this code. Please try again.","error");return false;}
@@ -1105,7 +1167,7 @@ const hasPartyRoomAddon=window.bookingState.addons.some(a=>Number(a.addon_id)===
 const effectiveEndTs=hasPartyRoomAddon?Number(window.bookingState.end_ts)+3600000:window.bookingState.end_ts;
 const attribution=window.kokoGetAttribution?window.kokoGetAttribution():{};
 const payload=compactPayload({location_slug:window.bookingState.location_slug,date:window.bookingState.date,guests:Number(window.bookingState.guests||0),party_room_id:window.bookingState.party_room_id,start_ts:window.bookingState.start_ts,end_ts:effectiveEndTs,package_id:window.bookingState.package_id,addons:quoteAddons(),customer_name:window.bookingState.customer_name,customer_phone:window.bookingState.customer_phone,customer_email:window.bookingState.customer_email,birthday_child_name:window.bookingState.birthday_child_name,birthday_child_gender:window.bookingState.birthday_child_gender,average_age:window.bookingState.average_age?Number(window.bookingState.average_age):undefined,booking_notes:window.bookingState.booking_notes,referral_code:window.bookingState.referral_code,promo_code:promoValue(),marketing_consent:window.bookingState.marketing_consent===true,utm_source:attribution.utm_source,utm_medium:attribution.utm_medium,utm_campaign:attribution.utm_campaign,landing_referrer:attribution.landing_referrer,entry_page:attribution.entry_page});
-const r=await fetch(`${BASE_URL}/CreateBooking`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload})});
+const r=await apiFetch(`${BASE_URL}/CreateBooking`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload})});
 const text=await r.text();
 if(!text.trim())return msg("CreateBooking API returned an empty response.",true);
 let data=null;
@@ -1138,7 +1200,7 @@ const btn=$("confirmBookingBtn")||$("confitmBookingBtn")||document.querySelector
 if(btn){btn.style.pointerEvents="none";btn.style.opacity=".75";btn.textContent="Redirecting to deposit payment..."}
 msg("Preparing your $51.50 payment...");
 try{
-const r=await fetch(`${BASE_URL}/ConfirmBooking`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload:{booking_id:id}})});
+const r=await apiFetch(`${BASE_URL}/ConfirmBooking`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({payload:{booking_id:id}})});
 const text=await r.text();
 if(!text.trim())throw new Error("ConfirmBooking API returned an empty response.");
 const data=JSON.parse(text);
