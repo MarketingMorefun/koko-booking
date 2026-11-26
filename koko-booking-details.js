@@ -47,8 +47,7 @@
     4: {
       slug: 'hurstville',
       arrival: 'Find KOKO at Shop G03 in Westfield Hurstville.',
-      transport: 'Walk from Hurstville Station or use a bus stop near Westfield.',
-      parking: 'Parking is available at Westfield Hurstville.'
+      transport: 'Walk from Hurstville Station or use a bus stop near Westfield.'
     },
     5: {
       slug: 'hornsby-westfield-event-cinemas',
@@ -156,7 +155,9 @@
     #koko-booking-details a { color: inherit; text-underline-offset: .18em; }
     #koko-booking-details :focus-visible { outline: 2px solid #805016; outline-offset: 3px; }
     #koko-booking-details [hidden] { display: none !important; }
-    #koko-booking-details [id] { scroll-margin-top: 10rem; }
+    #koko-booking-details [id], #party-planning > #invitation {
+      scroll-margin-top: calc(var(--kbd-navbar-bottom, 9rem) + 1rem);
+    }
 
     #koko-booking-details .kbd-intro {
       display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
@@ -243,10 +244,10 @@
     #koko-booking-details .kbd-ticket-money .kbd-ticket-fact-note { grid-column: 1; grid-row: 2; }
     #koko-booking-details .kbd-ticket-money .kbd-ticket-fact-value { grid-column: 2; grid-row: 1 / 3; text-align: right; }
 
-    #koko-booking-details .kbd-shortcuts {
-      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .58rem;
-      align-items: start; margin: 1rem 0 1.15rem;
+    #koko-booking-details :is(.kbd-shortcuts, .kbd-shortcut-links, .kbd-calendar-links) {
+      display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
     }
+    #koko-booking-details .kbd-shortcuts { justify-content: space-between; gap: .75rem 1rem; margin: 1rem 0 1.15rem; }
     #koko-booking-details .kbd-action {
       min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
       padding: .4rem .72rem; border: 1px solid #b7a58e; border-radius: .7rem; background: white; color: inherit;
@@ -257,15 +258,11 @@
     #koko-booking-details .kbd-primary {
       background: var(--kbd-yellow); border: 2px solid var(--kbd-ink); box-shadow: 3px 3px var(--kbd-ink);
     }
-    #koko-booking-details .kbd-calendar { position: relative; min-width: 0; }
-    #koko-booking-details .kbd-calendar summary { width: 100%; }
-    #koko-booking-details .kbd-calendar-menu {
-      position: absolute; z-index: 4; top: calc(100% + .4rem); right: 0;
-      display: grid; gap: .25rem; min-width: max(100%, 10.25rem); padding: .35rem;
-      border: 1px solid var(--kbd-border); border-radius: .75rem; background: white;
-      box-shadow: 0 6px 22px #36291120;
+    #koko-booking-details .kbd-calendar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: .45rem .65rem; min-width: 0;
+      padding: .35rem .45rem .35rem .7rem; border: 1px solid #e3cf93; border-radius: .8rem; background: #fff6d7;
     }
-    #koko-booking-details .kbd-calendar-menu a { justify-content: flex-start; border-color: transparent; }
+    #koko-booking-details .kbd-calendar-label { font-size: .8125rem; font-weight: 700; }
 
     #koko-booking-details .kbd-grid, #koko-booking-details .kbd-side { display: grid; gap: .8rem; align-content: start; }
     #koko-booking-details .kbd-card {
@@ -364,10 +361,13 @@
       #koko-booking-details .kbd-ticket-copy h1 { font-size: clamp(1.65rem, 7.7vw, 2.4rem); }
       #koko-booking-details .kbd-ticket-art { width: clamp(5.75rem, 22vw, 8rem); }
       #koko-booking-details .kbd-ticket-art img { width: 88%; }
+      #koko-booking-details .kbd-calendar { display: grid; width: 100%; padding: .55rem; }
+      #koko-booking-details .kbd-calendar-links {
+        display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch;
+      }
+      #koko-booking-details .kbd-calendar-links .kbd-action { padding-inline: .35rem; font-size: .8125rem; }
     }
     @media (min-width: 35rem) {
-      #koko-booking-details .kbd-shortcuts { display: flex; flex-wrap: wrap; }
-      #koko-booking-details .kbd-calendar-menu { right: auto; left: 0; }
       #koko-booking-details .kbd-features { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
     @media (min-width: 50rem) {
@@ -569,7 +569,7 @@
       return folded;
     }).join('\r\n');
     const blob = new Blob([calendar], { type: 'text/calendar;charset=utf-8' });
-    const apple = link('Apple Calendar (.ics)', URL.createObjectURL(blob), 'kbd-action');
+    const apple = link('Apple Calendar', URL.createObjectURL(blob), 'kbd-action');
     apple.download = 'KOKO-booking.ics';
     return [google, apple];
   }
@@ -607,17 +607,23 @@
   function showShortcuts(booking, start, end, name, isBirthday) {
     const actions = node('nav', 'kbd-shortcuts');
     actions.setAttribute('aria-label', 'Booking shortcuts');
+    const shortcuts = node('div', 'kbd-shortcut-links');
     const place = [name, booking.location.address].filter(Boolean).join(', ');
     const maps = new URLSearchParams({ api: '1', destination: place });
-    actions.append(link('Get directions', 'https://www.google.com/maps/dir/?' + maps,
+    shortcuts.append(link('Get directions', 'https://www.google.com/maps/dir/?' + maps,
       'kbd-action kbd-primary', true));
-    const calendar = node('details', 'kbd-calendar');
-    const menu = node('div', 'kbd-calendar-menu');
-    menu.append(...calendarLinks(booking, start, end, place, isBirthday));
-    calendar.append(toggleSummary('Add to calendar', 'kbd-action'), menu);
-    actions.append(calendar);
-    if (isBirthday) actions.append(link('Make invitation', '#invitation', 'kbd-action'));
-    actions.append(link('FAQs', '#kbd-visit-faqs', 'kbd-action'));
+    if (isBirthday) shortcuts.append(link('Make invitation', '#invitation', 'kbd-action'));
+    shortcuts.append(link('FAQs', '#kbd-visit-faqs', 'kbd-action'));
+
+    const calendar = node('div', 'kbd-calendar');
+    const label = node('p', 'kbd-calendar-label', 'Add to calendar');
+    label.id = 'kbd-calendar-label';
+    calendar.setAttribute('role', 'group');
+    calendar.setAttribute('aria-labelledby', label.id);
+    const calendars = node('div', 'kbd-calendar-links');
+    calendars.append(...calendarLinks(booking, start, end, place, isBirthday));
+    calendar.append(label, calendars);
+    actions.append(shortcuts, calendar);
     return actions;
   }
 
@@ -661,7 +667,7 @@
         ['Public transport', venue.transport], ['Parking', venue.parking]
       ]), link('Venue guide', '/locations/' + venue.slug, 'kbd-muted'));
     }
-    section.append(disclosure('Address, times & parking', ...details));
+    section.append(disclosure(venue?.parking ? 'Address, times & parking' : 'Address & times', ...details));
     const contact = venueContact(booking.location, venue);
     if (contact) {
       const actions = node('div', 'kbd-actions');
@@ -736,6 +742,26 @@
 
   function hide(element) {
     if (element) element.style.setProperty('display', 'none', 'important');
+  }
+
+  function watchNavbar(planning, panel) {
+    const navbar = document.querySelector('body > .navbar');
+    if (!navbar) return;
+    // The promotional strip is absolutely positioned in a Webflow embed below the fixed navbar.
+    const headerParts = [navbar, ...navbar.querySelectorAll(':scope > .w-embed')];
+    function alignPanel() {
+      const bottom = getComputedStyle(navbar).position === 'fixed'
+        ? Math.ceil(Math.max(...headerParts.map(part => part.getBoundingClientRect().bottom)))
+        : 0;
+      const panelTop = panel.getBoundingClientRect().top + window.scrollY;
+      const gap = parseFloat(getComputedStyle(panel).marginTop);
+      planning.style.setProperty('--kbd-navbar-bottom', bottom + 'px');
+      panel.style.paddingTop = Math.max(0, bottom + gap - panelTop) + 'px';
+    }
+    const observer = new ResizeObserver(alignPanel);
+    for (const part of headerParts) observer.observe(part);
+    alignPanel();
+    return alignPanel;
   }
 
   function updatePlanning(planning, hero, panel, isBirthday, cancelled) {
@@ -840,6 +866,7 @@
     panel.setAttribute('aria-labelledby', 'koko-booking-details-title');
     document.head.append(node('style', '', styles));
     hero.after(panel);
+    const alignPanel = watchNavbar(planning, panel);
     if (!isValidToken) {
       showNotFound(panel);
       return;
@@ -867,6 +894,7 @@
           throw new Error('Unexpected booking fields');
         }
         renderBooking(panel, planning, hero, booking, start, end);
+        alignPanel?.();
       } catch {
         const card = statusMessage(panel, 'We couldn’t load your booking right now. Please try again.');
         const actions = node('div', 'kbd-actions');
