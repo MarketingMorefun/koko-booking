@@ -315,7 +315,9 @@
     #koko-booking-details .kbd-toggle::after { transform: translate(-50%, -50%) rotate(90deg); }
     #koko-booking-details details[open] > summary .kbd-toggle::after { display: none; }
 
-    #koko-booking-details .kbd-questions { min-width: 0; margin: clamp(1.7rem, 4vw, 2.5rem) 4px 0 0; }
+    #koko-booking-details .kbd-questions {
+      width: min(100%, 52rem); margin: clamp(1.7rem, 4vw, 2.5rem) auto 0; padding-right: 5px;
+    }
     #koko-booking-details .kbd-questions-heading {
       display: flex; justify-content: space-between; align-items: center; gap: .6rem; margin-bottom: .55rem;
     }
@@ -331,23 +333,48 @@
     #koko-booking-details .kbd-qa-mascot img {
       display: block; width: 67%; height: auto; max-height: 100%; object-fit: contain;
     }
-    #koko-booking-details .kbd-topics {
-      display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .8rem;
+    #koko-booking-details .kbd-search {
+      position: relative; display: block; margin: .6rem 0 1.25rem;
     }
-    #koko-booking-details .kbd-topic {
-      min-height: 44px; padding: .4rem .72rem; border: 1px solid var(--kbd-border); border-radius: 999px;
-      background: white; color: var(--kbd-ink); font: inherit; font-size: .8125rem;
-      font-weight: 650; cursor: pointer;
+    #koko-booking-details .kbd-search input {
+      display: block; width: 100%; min-height: 48px; padding: .6rem 1rem .6rem 2.75rem;
+      border: 1.5px solid #a2917c; border-radius: .85rem; background: white; color: var(--kbd-ink); font: inherit;
     }
-    #koko-booking-details .kbd-topic[aria-pressed="true"] { background: #ffea56; border-color: var(--kbd-ink); }
-    #koko-booking-details .kbd-faq { display: grid; gap: .8rem; }
+    #koko-booking-details .kbd-search::before, #koko-booking-details .kbd-search::after {
+      content: ''; position: absolute; pointer-events: none; color: var(--kbd-muted);
+    }
+    #koko-booking-details .kbd-search::before {
+      top: calc(50% - 8px); left: 1rem; width: 13px; height: 13px; border: 2px solid; border-radius: 50%;
+    }
+    #koko-booking-details .kbd-search::after {
+      top: calc(50% + 5px); left: calc(1rem + 10px); width: 7px; height: 2px; background: currentColor; transform: rotate(45deg);
+    }
+    #koko-booking-details .kbd-search-status {
+      position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
+    }
+    #koko-booking-details .kbd-faq { display: grid; gap: clamp(1rem, 2.4vw, 1.5rem); }
+    #koko-booking-details .kbd-pager {
+      display: flex; flex-wrap: wrap; justify-content: center; gap: .85rem; margin-top: 1.5rem;
+    }
+    #koko-booking-details .kbd-pager button {
+      display: inline-flex; align-items: center; justify-content: center; gap: .6rem; min-height: 44px;
+      padding: .5rem 1.25rem; border: 1.5px solid var(--kbd-ink); border-radius: .8rem; background: white;
+      color: var(--kbd-ink); font: inherit; font-weight: 650; box-shadow: 2px 3px 0 var(--kbd-ink); cursor: pointer;
+    }
+    #koko-booking-details .kbd-pager button:hover { background: #fff6d7; }
+    #koko-booking-details .kbd-prev::before, #koko-booking-details .kbd-next::after {
+      content: ''; width: .45rem; height: .45rem; border: solid currentColor; border-width: 1.5px 1.5px 0 0;
+      transform: rotate(45deg);
+    }
+    #koko-booking-details .kbd-prev::before { transform: rotate(-135deg); }
     #koko-booking-details .kbd-question {
       background: white; border: 2px solid var(--kbd-ink); border-radius: 1.25rem;
       box-shadow: 4px 4px 0 var(--kbd-ink);
     }
     #koko-booking-details .kbd-question summary {
       display: grid; grid-template-columns: minmax(0, 1fr) .875rem; align-items: center;
-      gap: .75rem; min-height: 3.5rem; padding: .7rem clamp(.9rem, 2vw, 1.25rem);
+      gap: .75rem; min-height: 4rem; padding: .8rem clamp(.9rem, 2vw, 1.25rem);
+      scroll-margin-top: calc(var(--kbd-navbar-bottom, 9rem) + 1rem);
       cursor: pointer; font-size: .9375rem; line-height: 1.4; font-weight: 650;
     }
     #koko-booking-details .kbd-question summary:focus-visible { border-radius: 1.1rem; outline-offset: -5px; }
@@ -437,14 +464,10 @@
     return details;
   }
 
-  function faqGroup(questions) {
-    const group = node('section', 'kbd-faq');
-    for (const [question, answer] of questions) {
-      const item = node('details', 'kbd-question');
-      item.append(toggleSummary(question), node('p', 'kbd-question-answer', answer));
-      group.append(item);
-    }
-    return group;
+  function faqCard([question, answer]) {
+    const item = node('details', 'kbd-question');
+    item.append(toggleSummary(question), node('p', 'kbd-question-answer', answer));
+    return item;
   }
 
   function heading(panel, booking) {
@@ -688,34 +711,58 @@
     header.append(heading, mascot);
     section.append(header);
     const questions = [
-      ['Booking & payment', [['When is my payment due?', paymentMethods[booking.payment.method][1]], ...bookingQuestions]],
-      [isBirthday ? 'Birthday parties' : 'Group visits', isBirthday ? birthdayQuestions : groupQuestions],
-      ['Games & cards', gameQuestions]
+      ['When is my payment due?', paymentMethods[booking.payment.method][1]],
+      ...bookingQuestions, ...(isBirthday ? birthdayQuestions : groupQuestions), ...gameQuestions
     ];
-    const topics = node('div', 'kbd-topics');
-    topics.setAttribute('role', 'group');
-    topics.setAttribute('aria-label', 'FAQ topics');
-    const groups = questions.map(([, items], index) => {
-      const group = faqGroup(items);
-      group.id = 'kbd-questions-' + index;
-      group.setAttribute('aria-labelledby', 'kbd-topic-' + index);
-      group.hidden = index !== 0;
-      return group;
-    });
-    const buttons = questions.map(([label], index) => {
-      const button = node('button', 'kbd-topic', label);
-      button.type = 'button';
-      button.id = 'kbd-topic-' + index;
-      button.setAttribute('aria-controls', groups[index].id);
-      button.setAttribute('aria-pressed', String(index === 0));
-      button.addEventListener('click', () => buttons.forEach((topic, current) => {
-        topic.setAttribute('aria-pressed', String(current === index));
-        groups[current].hidden = current !== index;
-      }));
-      return button;
-    });
-    topics.append(...buttons);
-    section.append(topics, ...groups);
+    const searchWrap = node('div', 'kbd-search');
+    const search = node('input');
+    search.type = 'search';
+    search.placeholder = 'Search questions';
+    search.setAttribute('aria-label', 'Search booking questions');
+    searchWrap.append(search);
+
+    const results = node('div', 'kbd-faq');
+    const status = node('p');
+    status.setAttribute('role', 'status');
+    const pager = node('nav', 'kbd-pager');
+    pager.setAttribute('aria-label', 'FAQ pages');
+    const previous = node('button', 'kbd-prev', 'Previous');
+    const next = node('button', 'kbd-next', 'Next');
+    previous.type = next.type = 'button';
+    pager.append(previous, next);
+    section.append(searchWrap, status, results, pager);
+
+    const pageSize = 4;
+    let page = 0;
+    const normalize = text => text.toLowerCase().replace(/['’]/g, '');
+    function renderPage() {
+      const words = normalize(search.value).trim().split(/\s+/).filter(Boolean);
+      const matches = questions.filter(pair => {
+        const text = normalize(pair.join(' '));
+        return words.every(word => text.includes(word));
+      });
+      const pages = Math.ceil(matches.length / pageSize);
+      const start = page * pageSize;
+      results.replaceChildren(...matches.slice(start, start + pageSize).map(faqCard));
+      previous.hidden = page === 0;
+      next.hidden = page + 1 >= pages;
+      pager.hidden = pages <= 1;
+      status.className = pages ? 'kbd-search-status' : 'kbd-muted';
+      status.textContent = pages
+        ? matches.length + ' matching ' + (matches.length === 1 ? 'question' : 'questions') + '. Page ' + (page + 1) + ' of ' + pages + '.'
+        : 'No questions found. Try a different search.';
+    }
+    function turnPage(step) {
+      page += step;
+      renderPage();
+      const first = results.querySelector('summary');
+      first.focus({ preventScroll: true });
+      first.scrollIntoView({ block: 'nearest' });
+    }
+    search.addEventListener('input', () => { page = 0; renderPage(); });
+    previous.addEventListener('click', () => turnPage(-1));
+    next.addEventListener('click', () => turnPage(1));
+    renderPage();
     const actions = node('div', 'kbd-actions');
     actions.append(emailLink(booking.reference), link('Booking terms', '/terms', 'kbd-action'));
     section.append(actions);
