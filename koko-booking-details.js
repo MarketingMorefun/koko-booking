@@ -12,6 +12,7 @@
   const isValidToken = /^[A-Za-z0-9_-]{24}$/.test(token);
   const endpoint = 'https://x8ki-letl-twmt.n7.xano.io/api:KARDPSrJ/BookingDetails';
   const supportEmail = 'marketing@kokoamusement.com.au';
+  const georgeArt = 'https://cdn.jsdelivr.net/gh/MarketingMorefun/koko-booking@57b1895e99a8ce3e00e18b90f88efa0455e29c03/email-assets/';
   const sydney = 'Australia/Sydney';
   const date = new Intl.DateTimeFormat('en-AU', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: sydney
@@ -167,7 +168,14 @@
     }
     #koko-booking-details .kbd-confirmed { background: #e8f5eb; color: #255f44; }
     #koko-booking-details .kbd-cancelled { background: #f8e7e2; color: #842e28; }
-    #koko-booking-details .kbd-greeting { margin: 0 0 .8rem; overflow-wrap: anywhere; }
+    #koko-booking-details .kbd-greeting {
+      display: flex; align-items: center; gap: .65rem; width: fit-content; max-width: 100%;
+      margin-bottom: .9rem; padding: .25rem .9rem .25rem .45rem; border-radius: 1rem;
+      background: #fff3df; font-weight: 600; overflow-wrap: anywhere;
+    }
+    #koko-booking-details .kbd-greeting img {
+      display: block; flex: 0 0 auto; width: 3rem; height: auto;
+    }
     #koko-booking-details .kbd-grid { display: grid; gap: .85rem; }
     #koko-booking-details .kbd-card {
       min-width: 0; padding: clamp(1rem, 2vw, 1.4rem); border: 1px solid var(--kbd-border);
@@ -196,11 +204,55 @@
     }
     #koko-booking-details .kbd-action:hover { border-color: var(--kbd-ink); }
     #koko-booking-details .kbd-primary { background: var(--kbd-yellow); border: 2px solid var(--kbd-ink); box-shadow: 3px 3px var(--kbd-ink); }
-    #koko-booking-details .kbd-faq { margin-top: .85rem; }
-    #koko-booking-details .kbd-faq + .kbd-faq { margin-top: .7rem; }
-    #koko-booking-details details { border-bottom: 1px solid var(--kbd-border); }
-    #koko-booking-details summary { min-height: 44px; padding: .6rem .15rem; cursor: pointer; font-weight: 600; }
-    #koko-booking-details details p { margin: 0 0 .7rem; color: var(--kbd-muted); }
+    #koko-booking-details .kbd-questions { min-width: 0; margin: clamp(1.2rem, 4vw, 2.25rem) 4px 0 0; }
+    #koko-booking-details .kbd-questions-heading {
+      display: flex; justify-content: space-between; align-items: center; gap: .65rem;
+      margin-bottom: 1rem;
+    }
+    #koko-booking-details .kbd-questions-heading h3 {
+      font-size: clamp(1.45rem, 3vw, 2rem); line-height: 1.16;
+    }
+    #koko-booking-details .kbd-qa-highlight {
+      background: linear-gradient(transparent 76%, var(--kbd-yellow) 76%, var(--kbd-yellow) 96%, transparent 96%);
+      box-decoration-break: clone; -webkit-box-decoration-break: clone;
+    }
+    #koko-booking-details .kbd-qa-mascot {
+      position: relative; display: grid; place-items: center; flex: 0 0 auto;
+      width: clamp(4.25rem, 12vw, 6.25rem); aspect-ratio: 1; margin-right: .5rem;
+      background: radial-gradient(circle, #fff083 0 52%, #fff7d2 53% 66%, transparent 67%);
+    }
+    #koko-booking-details .kbd-qa-mascot img { display: block; height: 88%; width: auto; max-width: 100%; }
+    #koko-booking-details .kbd-qa-mascot::before, #koko-booking-details .kbd-qa-mascot::after {
+      content: ''; position: absolute; width: .85rem; aspect-ratio: 1; background: #b97a1d;
+      clip-path: polygon(50% 0, 64% 36%, 100% 50%, 64% 64%, 50% 100%, 36% 64%, 0 50%, 36% 36%);
+    }
+    #koko-booking-details .kbd-qa-mascot::before { top: 18%; right: 0; }
+    #koko-booking-details .kbd-qa-mascot::after { bottom: 24%; left: 0; width: .58rem; }
+    #koko-booking-details .kbd-faq { display: grid; gap: .95rem; }
+    #koko-booking-details .kbd-faq + .kbd-faq { margin-top: clamp(1.5rem, 4vw, 2.25rem); }
+    #koko-booking-details .kbd-faq h4 { font-size: clamp(1.08rem, 2.5vw, 1.3rem); line-height: 1.3; }
+    #koko-booking-details .kbd-question {
+      background: white; border: 2px solid var(--kbd-ink); border-radius: 1.25rem;
+      box-shadow: 4px 4px 0 var(--kbd-ink);
+    }
+    #koko-booking-details .kbd-question summary {
+      display: grid; grid-template-columns: minmax(0, 1fr) .875rem; align-items: center;
+      gap: .75rem; min-height: 3.625rem; padding: .75rem clamp(.9rem, 2vw, 1.25rem);
+      list-style: none; cursor: pointer; font-size: .9375rem; line-height: 1.4; font-weight: 600;
+    }
+    #koko-booking-details .kbd-question summary::-webkit-details-marker { display: none; }
+    #koko-booking-details .kbd-question summary:focus-visible { border-radius: 1.1rem; outline-offset: -5px; }
+    #koko-booking-details .kbd-qa-toggle { position: relative; width: .875rem; height: .875rem; color: #7b6a58; }
+    #koko-booking-details .kbd-qa-toggle::before, #koko-booking-details .kbd-qa-toggle::after {
+      content: ''; position: absolute; top: 50%; left: 50%; width: .875rem; height: 2px;
+      background: currentColor; transform: translate(-50%, -50%);
+    }
+    #koko-booking-details .kbd-qa-toggle::after { transform: translate(-50%, -50%) rotate(90deg); }
+    #koko-booking-details .kbd-question[open] .kbd-qa-toggle::after { display: none; }
+    #koko-booking-details .kbd-question-answer {
+      padding: 0 clamp(.9rem, 2vw, 1.25rem) 1rem; color: var(--kbd-muted); font-size: .9375rem;
+    }
+    #koko-booking-details .kbd-questions > .kbd-actions { margin-top: 1.35rem; }
     @media (min-width: 35rem) {
       #koko-booking-details .kbd-fields { grid-template-columns: 1fr 1fr; }
     }
@@ -214,6 +266,18 @@
     if (className) element.className = className;
     if (text !== undefined) element.textContent = text;
     return element;
+  }
+
+  function george(pose, width, height) {
+    const image = node('img');
+    image.alt = '';
+    image.width = width;
+    image.height = height;
+    image.decoding = 'async';
+    image.referrerPolicy = 'no-referrer';
+    if (pose === 'tablet') image.loading = 'lazy';
+    image.src = georgeArt + 'george-' + pose + '.png';
+    return image;
   }
 
   function link(text, href, className, newTab = false) {
@@ -244,11 +308,17 @@
   }
 
   function faqGroup(title, questions) {
-    const group = node('div', 'kbd-faq');
-    group.append(node('h4', '', title));
+    const group = node('section', 'kbd-faq');
+    const heading = node('h4');
+    heading.append(node('span', 'kbd-qa-highlight', title));
+    group.append(heading);
     for (const [question, answer] of questions) {
-      const item = node('details');
-      item.append(node('summary', '', question), node('p', '', answer));
+      const item = node('details', 'kbd-question');
+      const summary = node('summary', '', question);
+      const icon = node('span', 'kbd-qa-toggle');
+      icon.setAttribute('aria-hidden', 'true');
+      summary.append(icon);
+      item.append(summary, node('p', 'kbd-question-answer', answer));
       group.append(item);
     }
     return group;
@@ -421,8 +491,14 @@
   }
 
   function showFAQs(booking, isBirthday) {
-    const section = node('section', 'kbd-card kbd-subsection');
-    section.append(node('h3', '', 'Frequently asked questions'));
+    const section = node('section', 'kbd-questions');
+    const header = node('header', 'kbd-questions-heading');
+    const heading = node('h3', '', 'Frequently asked ');
+    heading.append(node('span', 'kbd-qa-highlight', 'questions'));
+    const mascot = node('span', 'kbd-qa-mascot');
+    mascot.append(george('tablet', 171, 240));
+    header.append(heading, mascot);
+    section.append(header);
     const questions = [['When is my payment due?', paymentMethods[booking.payment.method][1]], ...bookingQuestions];
     section.append(faqGroup('Payments and booking changes', questions),
       faqGroup(isBirthday ? 'Birthday parties' : 'Group visits', isBirthday ? birthdayQuestions : groupQuestions),
@@ -500,7 +576,9 @@
       panel.append(section);
     } else {
       if (booking.greeting_name) {
-        panel.append(node('p', 'kbd-greeting', 'Hi ' + booking.greeting_name + '!'));
+        const greeting = node('div', 'kbd-greeting');
+        greeting.append(george('wave', 387, 400), node('p', '', 'Hi ' + booking.greeting_name + '!'));
+        panel.append(greeting);
       }
       const grid = node('div', 'kbd-grid');
       grid.append(showVisit(booking, start, end, venue, name, isBirthday), showPayment(booking.payment));
