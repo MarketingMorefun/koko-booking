@@ -20,6 +20,9 @@
   const shortDate = new Intl.DateTimeFormat('en-AU', {
     weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: sydney
   });
+  const ticketDate = new Intl.DateTimeFormat('en-AU', {
+    weekday: 'short', day: 'numeric', month: 'short', timeZone: sydney
+  });
   const time = new Intl.DateTimeFormat('en-AU', {
     hour: 'numeric', minute: '2-digit', hour12: true, timeZone: sydney
   });
@@ -77,12 +80,12 @@
   const paymentFields = ['package_cents', 'addons_cents', 'total_cents', 'discount_cents',
     'paid_cents', 'fee_cents', 'balance_cents'];
   const packageFeatures = [
-    ['free_play_minutes', n => count.format(n) + ' minutes of play on red and yellow readers'],
-    ['party_room_minutes', n => count.format(n) + ' minutes in the party room'],
-    ['claw_games', n => count.format(n) + ' claw and prize games per guest'],
-    ['feature_games', n => count.format(n) + ' feature games per guest'],
-    ['preloaded_tickets', n => count.format(n) + ' KOKO tickets per guest'],
-    ['celebrant_bonus_tickets', n => count.format(n) + ' bonus tickets for the birthday child']
+    ['free_play_minutes', 'Arcade play', ' min', 'Red & yellow readers'],
+    ['party_room_minutes', 'Party room', ' min'],
+    ['claw_games', 'Claw & prize games', '', 'Per guest'],
+    ['feature_games', 'Feature games', '', 'Per guest'],
+    ['preloaded_tickets', 'KOKO tickets', '', 'Per guest'],
+    ['celebrant_bonus_tickets', 'Bonus tickets', '', 'Birthday child']
   ];
 
   const bookingQuestions = [
@@ -146,15 +149,15 @@
     #koko-booking-details *, #koko-booking-details *::before, #koko-booking-details *::after {
       box-sizing: border-box;
     }
-    #koko-booking-details h2, #koko-booking-details h3, #koko-booking-details h4,
-    #koko-booking-details p, #koko-booking-details dl, #koko-booking-details dd,
-    #koko-booking-details ul { margin: 0; }
-    #koko-booking-details :is(h2, h3, h4) { font-weight: 700; color: inherit; }
-    #koko-booking-details h2 { font-size: clamp(1.65rem, 4vw, 2.25rem); line-height: 1.1; }
-    #koko-booking-details h3 { font-size: 1.18rem; line-height: 1.28; }
-    #koko-booking-details h4 { font-size: 1rem; }
+    #koko-booking-details :is(h1, h2, h3, p, dl, dd, ul) { margin: 0; }
+    #koko-booking-details :is(h1, h2, h3) { font-weight: 700; color: inherit; }
+    #koko-booking-details h2 { font-size: clamp(1.5rem, 4vw, 2rem); line-height: 1.15; }
+    #koko-booking-details h3 { font-size: 1.13rem; line-height: 1.3; }
     #koko-booking-details a { color: inherit; text-underline-offset: .18em; }
     #koko-booking-details :focus-visible { outline: 2px solid #805016; outline-offset: 3px; }
+    #koko-booking-details [hidden] { display: none !important; }
+    #koko-booking-details [id] { scroll-margin-top: 10rem; }
+
     #koko-booking-details .kbd-intro {
       display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
       gap: .6rem 1rem; margin-bottom: .8rem;
@@ -163,54 +166,161 @@
       display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .65rem;
     }
     #koko-booking-details .kbd-badge {
-      padding: .25rem .65rem; border-radius: 999px; background: var(--kbd-warm);
-      font-size: .875rem; font-weight: 600; overflow-wrap: anywhere;
+      display: inline-flex; align-items: center; gap: .3rem; padding: .22rem .58rem; border-radius: 999px;
+      background: var(--kbd-warm); font-size: .8125rem; font-weight: 650; overflow-wrap: anywhere;
     }
     #koko-booking-details .kbd-confirmed { background: #e8f5eb; color: #255f44; }
+    #koko-booking-details .kbd-confirmed::before {
+      content: ''; width: .42rem; height: .42rem; border-radius: 50%; background: currentColor;
+    }
     #koko-booking-details .kbd-cancelled { background: #f8e7e2; color: #842e28; }
-    #koko-booking-details .kbd-greeting {
-      display: flex; align-items: center; gap: .65rem; width: fit-content; max-width: 100%;
-      margin-bottom: .9rem; padding: .25rem .9rem .25rem .45rem; border-radius: 1rem;
-      background: #fff3df; font-weight: 600; overflow-wrap: anywhere;
+
+    #koko-booking-details .kbd-ticket {
+      overflow: hidden; border: 2px solid var(--kbd-ink); border-radius: clamp(1.2rem, 3vw, 1.75rem);
+      background: #fffdf5; box-shadow: 4px 5px 0 var(--kbd-ink);
     }
-    #koko-booking-details .kbd-greeting img {
-      display: block; flex: 0 0 auto; width: 3rem; height: auto;
+    #koko-booking-details .kbd-ticket-header {
+      display: grid; grid-template: 'badges art' auto 'copy art' auto / minmax(0, 1fr) auto;
+      align-items: center; align-content: center; gap: .3rem .8rem;
+      min-height: clamp(9rem, 18vw, 13.25rem); padding: 1rem clamp(1rem, 4vw, 2.65rem);
+      background: linear-gradient(112deg, #fff183, #ffdf42);
     }
-    #koko-booking-details .kbd-grid { display: grid; gap: .85rem; }
-    #koko-booking-details .kbd-card {
-      min-width: 0; padding: clamp(1rem, 2vw, 1.4rem); border: 1px solid var(--kbd-border);
-      border-radius: 1rem; background: var(--kbd-cream); overflow-wrap: anywhere;
+    #koko-booking-details .kbd-ticket-copy { grid-area: copy; min-width: 0; position: relative; z-index: 1; }
+    #koko-booking-details .kbd-ticket-copy h1 {
+      margin: .38rem 0 .3rem; font-size: clamp(2.05rem, 6vw, 4.15rem);
+      line-height: .99; letter-spacing: -.052em; font-weight: 800;
     }
-    #koko-booking-details .kbd-card h3 { margin-bottom: .65rem; }
-    #koko-booking-details .kbd-payment { background: var(--kbd-warm); }
-    #koko-booking-details .kbd-fields { display: grid; gap: .5rem 1rem; }
-    #koko-booking-details .kbd-fields div { padding-top: .45rem; border-top: 1px solid var(--kbd-border); }
-    #koko-booking-details .kbd-fields dt { font-size: .875rem; color: var(--kbd-muted); }
-    #koko-booking-details .kbd-fields dd { font-weight: 600; }
-    #koko-booking-details .kbd-ledger { margin-top: .55rem; font-size: .875rem; }
-    #koko-booking-details .kbd-ledger div { display: flex; justify-content: space-between; gap: .75rem; padding: .3rem 0; }
-    #koko-booking-details .kbd-ledger dd { font-weight: 600; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-    #koko-booking-details .kbd-balance { border-top: 1px solid var(--kbd-border); font-size: 1rem; font-weight: 700; }
-    #koko-booking-details .kbd-status, #koko-booking-details .kbd-muted { color: var(--kbd-muted); font-size: .875rem; }
-    #koko-booking-details .kbd-list { padding-left: 1.15rem; }
-    #koko-booking-details .kbd-list li + li { margin-top: .25rem; }
-    #koko-booking-details .kbd-subsection { margin-top: .7rem; }
-    #koko-booking-details .kbd-subsection p + p { margin-top: .3rem; }
-    #koko-booking-details .kbd-actions { margin-top: .8rem; }
+    #koko-booking-details .kbd-ticket-header .kbd-kind { background: var(--kbd-ink); color: #fff8d0; }
+    #koko-booking-details .kbd-ticket-header .kbd-badges { grid-area: badges; gap: .3rem; }
+    #koko-booking-details .kbd-ticket-caption {
+      display: flex; flex-wrap: wrap; align-items: center; gap: .15rem .7rem;
+      overflow-wrap: anywhere; font-weight: 600;
+    }
+    #koko-booking-details .kbd-ticket-reference { font-size: .875rem; color: #594016; }
+    #koko-booking-details .kbd-ticket-art {
+      grid-area: art; position: relative; display: grid; place-items: center; isolation: isolate;
+      width: clamp(5rem, 20vw, 12.6rem); aspect-ratio: 1; transform: rotate(5deg);
+    }
+    #koko-booking-details .kbd-ticket-art::before {
+      content: ''; position: absolute; inset: 12%; z-index: -1; border-radius: 50%;
+      background: #fff6b0; box-shadow: 0 0 0 .4rem #fff9cf55;
+    }
+    #koko-booking-details .kbd-ticket-group .kbd-ticket-art::before { background: #e3f5ff; }
+    #koko-booking-details .kbd-ticket-art::after {
+      content: ''; position: absolute; top: 9%; right: 4%; width: clamp(.8rem, 2.5vw, 1.35rem); aspect-ratio: 1;
+      background: #a94a19;
+      clip-path: polygon(50% 0, 64% 36%, 100% 50%, 64% 64%, 50% 100%, 36% 64%, 0 50%, 36% 36%);
+    }
+    #koko-booking-details .kbd-ticket-art img { display: block; width: 79%; height: auto; }
+    #koko-booking-details .kbd-ticket-facts {
+      position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+      border-top: 2px dashed #dbc57c; padding: .7rem .85rem .85rem; gap: .55rem;
+    }
+    #koko-booking-details .kbd-ticket-facts::before, #koko-booking-details .kbd-ticket-facts::after {
+      content: ''; position: absolute; top: -.48rem; width: .85rem; height: .85rem;
+      border-radius: 50%; background: white; border: 1px solid #dbc57c;
+    }
+    #koko-booking-details .kbd-ticket-facts::before { left: -.6rem; }
+    #koko-booking-details .kbd-ticket-facts::after { right: -.6rem; }
+    #koko-booking-details .kbd-ticket-fact {
+      min-width: 0; padding: .5rem .65rem; border: 1px solid #efe4c5; border-radius: .85rem; background: white;
+      overflow-wrap: anywhere;
+    }
+    #koko-booking-details .kbd-ticket-fact dt {
+      color: var(--kbd-muted); font-size: .8125rem; font-weight: 600;
+    }
+    #koko-booking-details .kbd-ticket-fact-value {
+      font-size: clamp(1.12rem, 3vw, 1.85rem); letter-spacing: -.035em; line-height: 1.1; font-weight: 800;
+    }
+    #koko-booking-details .kbd-ticket-time .kbd-ticket-fact-value,
+    #koko-booking-details .kbd-ticket-money .kbd-ticket-fact-value { font-size: clamp(1.4rem, 4vw, 2.2rem); }
+    #koko-booking-details .kbd-ticket-fact-note { margin-top: .24rem; color: #59462f; font-size: .8125rem; line-height: 1.35; }
+    #koko-booking-details .kbd-ticket-money {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+      grid-column: 1 / -1; column-gap: .55rem; background: #fff0be; border-color: #f1da93;
+    }
+    #koko-booking-details .kbd-ticket-money dt { grid-column: 1; grid-row: 1; }
+    #koko-booking-details .kbd-ticket-money .kbd-ticket-fact-note { grid-column: 1; grid-row: 2; }
+    #koko-booking-details .kbd-ticket-money .kbd-ticket-fact-value { grid-column: 2; grid-row: 1 / 3; text-align: right; }
+
+    #koko-booking-details .kbd-shortcuts {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .58rem;
+      align-items: start; margin: 1rem 0 1.15rem;
+    }
     #koko-booking-details .kbd-action {
-      min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: .4rem .7rem;
-      border: 1px solid #b7a58e; border-radius: .7rem; background: white; color: inherit;
-      font: inherit; font-size: .875rem; font-weight: 600; text-align: center; text-decoration: none; cursor: pointer;
+      min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+      padding: .4rem .72rem; border: 1px solid #b7a58e; border-radius: .7rem; background: white; color: inherit;
+      font: inherit; font-size: .875rem; font-weight: 650; line-height: 1.3;
+      text-align: center; text-decoration: none; cursor: pointer;
     }
     #koko-booking-details .kbd-action:hover { border-color: var(--kbd-ink); }
-    #koko-booking-details .kbd-primary { background: var(--kbd-yellow); border: 2px solid var(--kbd-ink); box-shadow: 3px 3px var(--kbd-ink); }
-    #koko-booking-details .kbd-questions { min-width: 0; margin: clamp(1.2rem, 4vw, 2.25rem) 4px 0 0; }
-    #koko-booking-details .kbd-questions-heading {
-      display: flex; justify-content: space-between; align-items: center; gap: .65rem;
-      margin-bottom: 1rem;
+    #koko-booking-details .kbd-primary {
+      background: var(--kbd-yellow); border: 2px solid var(--kbd-ink); box-shadow: 3px 3px var(--kbd-ink);
     }
-    #koko-booking-details .kbd-questions-heading h3 {
-      font-size: clamp(1.45rem, 3vw, 2rem); line-height: 1.16;
+    #koko-booking-details .kbd-calendar { position: relative; min-width: 0; }
+    #koko-booking-details .kbd-calendar summary { width: 100%; }
+    #koko-booking-details .kbd-calendar-menu {
+      position: absolute; z-index: 4; top: calc(100% + .4rem); right: 0;
+      display: grid; gap: .25rem; min-width: max(100%, 10.25rem); padding: .35rem;
+      border: 1px solid var(--kbd-border); border-radius: .75rem; background: white;
+      box-shadow: 0 6px 22px #36291120;
+    }
+    #koko-booking-details .kbd-calendar-menu a { justify-content: flex-start; border-color: transparent; }
+
+    #koko-booking-details .kbd-grid, #koko-booking-details .kbd-side { display: grid; gap: .8rem; align-content: start; }
+    #koko-booking-details .kbd-card {
+      min-width: 0; padding: clamp(.95rem, 2vw, 1.35rem); border: 1px solid var(--kbd-border);
+      border-radius: 1rem; background: var(--kbd-cream); overflow-wrap: anywhere;
+    }
+    #koko-booking-details .kbd-card > :is(h2,h3) { margin-bottom: .45rem; }
+    #koko-booking-details .kbd-card h2 { font-size: clamp(1.15rem, 2.5vw, 1.4rem); }
+    #koko-booking-details .kbd-card .kbd-actions { margin-top: .65rem; }
+    #koko-booking-details .kbd-package-head {
+      display: flex; flex-wrap: wrap; gap: .45rem 1rem; justify-content: space-between; align-items: center;
+    }
+    #koko-booking-details .kbd-package-title { min-width: 0; }
+    #koko-booking-details .kbd-package-title h2 { font-size: clamp(1.22rem, 3vw, 1.65rem); line-height: 1.17; }
+    #koko-booking-details .kbd-features {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem;
+      margin: .65rem 0 0; padding: 0; list-style: none;
+    }
+    #koko-booking-details .kbd-feature {
+      min-width: 0; padding: .55rem .6rem; border-radius: .7rem; background: #f6f0e6;
+      font-size: .8125rem; line-height: 1.3;
+    }
+    #koko-booking-details .kbd-feature:first-child { background: #fff0b3; }
+    #koko-booking-details .kbd-feature strong { display: block; font-size: 1.2rem; line-height: 1.25; }
+    #koko-booking-details .kbd-feature small { display: block; margin-top: .12rem; color: var(--kbd-muted); font-size: .75rem; }
+    #koko-booking-details .kbd-payment { background: #fff9e8; }
+    #koko-booking-details .kbd-payment-sub { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .65rem; }
+    #koko-booking-details .kbd-fields { display: grid; gap: .45rem; }
+    #koko-booking-details .kbd-fields dt { font-size: .8125rem; color: var(--kbd-muted); }
+    #koko-booking-details .kbd-fields dd { font-weight: 600; }
+    #koko-booking-details .kbd-ledger { font-size: .875rem; }
+    #koko-booking-details .kbd-ledger div { display: flex; justify-content: space-between; gap: .75rem; padding: .26rem 0; }
+    #koko-booking-details .kbd-ledger dd { font-weight: 650; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    #koko-booking-details .kbd-balance { border-top: 1px solid var(--kbd-border); font-weight: 750; }
+    #koko-booking-details .kbd-muted { color: var(--kbd-muted); font-size: .875rem; }
+    #koko-booking-details .kbd-visit-note { font-weight: 600; }
+    #koko-booking-details .kbd-reveal { margin-top: .55rem; border-top: 1px solid var(--kbd-border); }
+    #koko-booking-details .kbd-reveal summary {
+      display: flex; justify-content: space-between; align-items: center; gap: .55rem;
+      min-height: 44px; padding: .35rem 0; font-size: .875rem; font-weight: 650; cursor: pointer;
+    }
+    #koko-booking-details .kbd-reveal-body { display: grid; gap: .45rem; padding: .1rem 0 .65rem; }
+    #koko-booking-details summary { list-style: none; }
+    #koko-booking-details summary::-webkit-details-marker { display: none; }
+    #koko-booking-details .kbd-toggle { flex: 0 0 .875rem; position: relative; width: .875rem; height: .875rem; color: #7b6a58; }
+    #koko-booking-details .kbd-toggle::before, #koko-booking-details .kbd-toggle::after {
+      content: ''; position: absolute; top: 50%; left: 50%; width: .875rem; height: 2px;
+      background: currentColor; transform: translate(-50%, -50%);
+    }
+    #koko-booking-details .kbd-toggle::after { transform: translate(-50%, -50%) rotate(90deg); }
+    #koko-booking-details details[open] > summary .kbd-toggle::after { display: none; }
+
+    #koko-booking-details .kbd-questions { min-width: 0; margin: clamp(1.7rem, 4vw, 2.5rem) 4px 0 0; }
+    #koko-booking-details .kbd-questions-heading {
+      display: flex; justify-content: space-between; align-items: center; gap: .6rem; margin-bottom: .55rem;
     }
     #koko-booking-details .kbd-qa-highlight {
       background: linear-gradient(transparent 76%, var(--kbd-yellow) 76%, var(--kbd-yellow) 96%, transparent 96%);
@@ -218,46 +328,56 @@
     }
     #koko-booking-details .kbd-qa-mascot {
       position: relative; display: grid; place-items: center; flex: 0 0 auto;
-      width: clamp(4.25rem, 12vw, 6.25rem); aspect-ratio: 1; margin-right: .5rem;
+      width: clamp(4.3rem, 10vw, 5.75rem); aspect-ratio: 1;
       background: radial-gradient(circle, #fff083 0 52%, #fff7d2 53% 66%, transparent 67%);
     }
-    #koko-booking-details .kbd-qa-mascot img { display: block; height: 88%; width: auto; max-width: 100%; }
-    #koko-booking-details .kbd-qa-mascot::before, #koko-booking-details .kbd-qa-mascot::after {
-      content: ''; position: absolute; width: .85rem; aspect-ratio: 1; background: #b97a1d;
-      clip-path: polygon(50% 0, 64% 36%, 100% 50%, 64% 64%, 50% 100%, 36% 64%, 0 50%, 36% 36%);
+    #koko-booking-details .kbd-qa-mascot img {
+      display: block; width: 67%; height: auto; max-height: 100%; object-fit: contain;
     }
-    #koko-booking-details .kbd-qa-mascot::before { top: 18%; right: 0; }
-    #koko-booking-details .kbd-qa-mascot::after { bottom: 24%; left: 0; width: .58rem; }
-    #koko-booking-details .kbd-faq { display: grid; gap: .95rem; }
-    #koko-booking-details .kbd-faq + .kbd-faq { margin-top: clamp(1.5rem, 4vw, 2.25rem); }
-    #koko-booking-details .kbd-faq h4 { font-size: clamp(1.08rem, 2.5vw, 1.3rem); line-height: 1.3; }
+    #koko-booking-details .kbd-topics {
+      display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .8rem;
+    }
+    #koko-booking-details .kbd-topic {
+      min-height: 44px; padding: .4rem .72rem; border: 1px solid var(--kbd-border); border-radius: 999px;
+      background: white; color: var(--kbd-ink); font: inherit; font-size: .8125rem;
+      font-weight: 650; cursor: pointer;
+    }
+    #koko-booking-details .kbd-topic[aria-pressed="true"] { background: #ffea56; border-color: var(--kbd-ink); }
+    #koko-booking-details .kbd-faq { display: grid; gap: .8rem; }
     #koko-booking-details .kbd-question {
       background: white; border: 2px solid var(--kbd-ink); border-radius: 1.25rem;
       box-shadow: 4px 4px 0 var(--kbd-ink);
     }
     #koko-booking-details .kbd-question summary {
       display: grid; grid-template-columns: minmax(0, 1fr) .875rem; align-items: center;
-      gap: .75rem; min-height: 3.625rem; padding: .75rem clamp(.9rem, 2vw, 1.25rem);
-      list-style: none; cursor: pointer; font-size: .9375rem; line-height: 1.4; font-weight: 600;
+      gap: .75rem; min-height: 3.5rem; padding: .7rem clamp(.9rem, 2vw, 1.25rem);
+      cursor: pointer; font-size: .9375rem; line-height: 1.4; font-weight: 650;
     }
-    #koko-booking-details .kbd-question summary::-webkit-details-marker { display: none; }
     #koko-booking-details .kbd-question summary:focus-visible { border-radius: 1.1rem; outline-offset: -5px; }
-    #koko-booking-details .kbd-qa-toggle { position: relative; width: .875rem; height: .875rem; color: #7b6a58; }
-    #koko-booking-details .kbd-qa-toggle::before, #koko-booking-details .kbd-qa-toggle::after {
-      content: ''; position: absolute; top: 50%; left: 50%; width: .875rem; height: 2px;
-      background: currentColor; transform: translate(-50%, -50%);
-    }
-    #koko-booking-details .kbd-qa-toggle::after { transform: translate(-50%, -50%) rotate(90deg); }
-    #koko-booking-details .kbd-question[open] .kbd-qa-toggle::after { display: none; }
     #koko-booking-details .kbd-question-answer {
-      padding: 0 clamp(.9rem, 2vw, 1.25rem) 1rem; color: var(--kbd-muted); font-size: .9375rem;
+      padding: 0 clamp(.9rem, 2vw, 1.25rem) .95rem; color: var(--kbd-muted); font-size: .9375rem;
     }
-    #koko-booking-details .kbd-questions > .kbd-actions { margin-top: 1.35rem; }
+    #koko-booking-details .kbd-questions > .kbd-actions { margin-top: 1.25rem; }
+
+    @media (max-width: 34.99rem) {
+      #koko-booking-details .kbd-ticket-header { grid-template-areas: 'badges badges' 'copy art'; gap: .15rem .45rem; }
+      #koko-booking-details .kbd-ticket-copy h1 { font-size: clamp(1.65rem, 7.7vw, 2.4rem); }
+      #koko-booking-details .kbd-ticket-art { width: clamp(5.75rem, 22vw, 8rem); }
+      #koko-booking-details .kbd-ticket-art img { width: 88%; }
+    }
     @media (min-width: 35rem) {
-      #koko-booking-details .kbd-fields { grid-template-columns: 1fr 1fr; }
+      #koko-booking-details .kbd-shortcuts { display: flex; flex-wrap: wrap; }
+      #koko-booking-details .kbd-calendar-menu { right: auto; left: 0; }
+      #koko-booking-details .kbd-features { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
     @media (min-width: 50rem) {
-      #koko-booking-details .kbd-grid { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+      #koko-booking-details .kbd-ticket-facts {
+        grid-template-columns: 1fr 1.25fr .95fr; padding: .9rem 1rem 1rem; gap: .8rem;
+      }
+      #koko-booking-details .kbd-ticket-fact { padding: .65rem .8rem; }
+      #koko-booking-details .kbd-ticket-money { display: block; grid-column: auto; }
+      #koko-booking-details .kbd-ticket-money .kbd-ticket-fact-value { text-align: start; }
+      #koko-booking-details .kbd-grid { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }
     }
   `;
 
@@ -301,24 +421,27 @@
     return list;
   }
 
-  function listOf(items) {
-    const list = node('ul', 'kbd-list');
-    for (const item of items) list.append(node('li', '', item));
-    return list;
+  function toggleSummary(label, className) {
+    const summary = node('summary', className, label);
+    const icon = node('span', 'kbd-toggle');
+    icon.setAttribute('aria-hidden', 'true');
+    summary.append(icon);
+    return summary;
   }
 
-  function faqGroup(title, questions) {
+  function disclosure(title, ...items) {
+    const details = node('details', 'kbd-reveal');
+    const body = node('div', 'kbd-reveal-body');
+    body.append(...items);
+    details.append(toggleSummary(title), body);
+    return details;
+  }
+
+  function faqGroup(questions) {
     const group = node('section', 'kbd-faq');
-    const heading = node('h4');
-    heading.append(node('span', 'kbd-qa-highlight', title));
-    group.append(heading);
     for (const [question, answer] of questions) {
       const item = node('details', 'kbd-question');
-      const summary = node('summary', '', question);
-      const icon = node('span', 'kbd-qa-toggle');
-      icon.setAttribute('aria-hidden', 'true');
-      summary.append(icon);
-      item.append(summary, node('p', 'kbd-question-answer', answer));
+      item.append(toggleSummary(question), node('p', 'kbd-question-answer', answer));
       group.append(item);
     }
     return group;
@@ -343,6 +466,46 @@
     const day = date.format(start);
     const sameDay = day === date.format(end);
     return day + ', ' + time.format(start) + ' – ' + (sameDay ? '' : date.format(end) + ', ') + time.format(end);
+  }
+
+  function ticketFact(kind, title, value, note) {
+    const fact = node('div', 'kbd-ticket-fact ' + kind);
+    fact.append(node('dt', '', title), node('dd', 'kbd-ticket-fact-value', value));
+    if (note) fact.append(node('dd', 'kbd-ticket-fact-note', note));
+    return fact;
+  }
+
+  function showTicket(booking, start, venue, isBirthday) {
+    const ticket = node('header', 'kbd-ticket' + (isBirthday ? '' : ' kbd-ticket-group'));
+    const header = node('div', 'kbd-ticket-header');
+    const copy = node('div', 'kbd-ticket-copy');
+    const badges = node('div', 'kbd-badges');
+    badges.append(node('span', 'kbd-badge kbd-kind', isBirthday ? 'Birthday party' : 'Group visit'),
+      node('span', 'kbd-badge kbd-confirmed', 'Confirmed'));
+    const title = node('h1', '', 'My booking');
+    title.id = 'koko-booking-details-title';
+    const caption = node('p', 'kbd-ticket-caption');
+    if (booking.greeting_name) caption.append(node('span', '', 'Hi ' + booking.greeting_name + '!'));
+    caption.append(node('span', 'kbd-ticket-reference', 'Booking #' + booking.reference));
+    copy.append(title, caption);
+    const art = node('span', 'kbd-ticket-art');
+    art.append(isBirthday ? george('cake', 178, 200) : george('wave', 387, 400));
+    header.append(badges, copy, art);
+
+    const localDate = ticketDate.format(start).replace(',', '');
+    const venueNote = venue?.floor && !booking.location.name.toLowerCase().includes(venue.floor.toLowerCase())
+      ? venue.floor : booking.room || booking.location.address;
+    const payment = booking.payment;
+    const paymentFact = payment.method === 'full'
+      ? ticketFact('kbd-ticket-money', 'Payment', 'Paid in full', 'Nothing due at the venue')
+      : ticketFact('kbd-ticket-money', payment.method === 'invoice' ? 'Invoice balance' : 'Balance due',
+        money(payment.balance_cents), payment.method === 'invoice' ? 'See invoice for terms'
+          : payment.balance_cents > 0 ? 'Pay at the venue on the day' : 'Nothing due at the venue');
+    const facts = node('dl', 'kbd-ticket-facts');
+    facts.append(ticketFact('kbd-ticket-time', isBirthday ? 'Party starts' : 'Session starts', time.format(start), localDate + ' · Sydney time'),
+      ticketFact('kbd-ticket-place', 'Venue', booking.location.name, venueNote), paymentFact);
+    ticket.append(header, facts);
+    return ticket;
   }
 
   function venueName(location, venue) {
@@ -414,8 +577,13 @@
   function showPayment(payment) {
     const section = node('section', 'kbd-card kbd-payment');
     const [label, note] = paymentMethods[payment.method];
-    section.append(node('h3', '', 'Payment summary'), node('p', 'kbd-status', label),
-      node('p', 'kbd-muted', note));
+    section.append(node('h2', '', 'Payment'));
+    const summary = node('p', 'kbd-payment-sub');
+    summary.append(node('span', 'kbd-badge', label));
+    if (payment.discount_cents > 0) {
+      summary.append(node('span', 'kbd-muted', money(payment.discount_cents) + ' discount applied'));
+    }
+    section.append(summary);
     const paymentRows = [
       ['Package', money(payment.package_cents)],
       ['Add-ons', money(payment.addons_cents)],
@@ -428,63 +596,76 @@
       paymentRows.push(['Booking fee', money(payment.fee_cents)],
         ['Total paid online', money(payment.paid_cents + payment.fee_cents)]);
     }
-    section.append(rows('kbd-ledger', paymentRows));
+    const details = disclosure('Payment breakdown', node('p', 'kbd-muted', note), rows('kbd-ledger', paymentRows));
     if (payment.method !== 'invoice' && payment.fee_cents > 0) {
-      section.append(node('p', 'kbd-muted', 'The booking fee is non-refundable.'));
+      details.lastElementChild.append(node('p', 'kbd-muted', 'The booking fee is non-refundable.'));
     }
+    section.append(details);
     return section;
   }
 
-  function showVisit(booking, start, end, venue, name, isBirthday) {
-    const section = node('section', 'kbd-card');
+  function showShortcuts(booking, start, end, name, isBirthday) {
+    const actions = node('nav', 'kbd-shortcuts');
+    actions.setAttribute('aria-label', 'Booking shortcuts');
     const place = [name, booking.location.address].filter(Boolean).join(', ');
-    section.append(node('h3', '', 'Your visit'), rows('kbd-fields', [
-      [isBirthday ? 'Party room time (Sydney)' : 'Session time (Sydney)', displayTime(start, end)],
-      ['Venue', place], ['Party room', isBirthday ? booking.room : null],
-      ['Guests', count.format(booking.guests)], ['Package', booking.package.name]
-    ]));
-    const features = packageFeatures
-      .filter(([key]) => booking.package[key] > 0)
-      .map(([key, format]) => format(booking.package[key]));
-    if (features.length) {
-      const included = node('div', 'kbd-subsection');
-      included.append(node('h4', '', 'What’s included'), listOf(features));
-      section.append(included);
-    }
-    if (booking.addons.length) {
-      const addOns = node('div', 'kbd-subsection');
-      addOns.append(node('h4', '', 'Add-ons'), rows('kbd-ledger', booking.addons.map(addOn => [
-        count.format(addOn.qty) + ' × ' + addOn.name + (addOn.option_label ? ' · ' + addOn.option_label : ''),
-        money(addOn.line_total_cents)
-      ])));
-      section.append(addOns);
-    }
-    const actions = node('div', 'kbd-actions');
     const maps = new URLSearchParams({ api: '1', destination: place });
     actions.append(link('Get directions', 'https://www.google.com/maps/dir/?' + maps,
       'kbd-action kbd-primary', true));
-    const contact = venueContact(booking.location, venue);
-    if (contact) actions.append(contact);
-    section.append(actions);
-    const calendar = node('div', 'kbd-actions');
-    calendar.append(node('strong', 'kbd-muted', 'Add to calendar'), ...calendarLinks(booking, start, end, place, isBirthday));
-    section.append(calendar);
+    const calendar = node('details', 'kbd-calendar');
+    const menu = node('div', 'kbd-calendar-menu');
+    menu.append(...calendarLinks(booking, start, end, place, isBirthday));
+    calendar.append(toggleSummary('Add to calendar', 'kbd-action'), menu);
+    actions.append(calendar);
+    if (isBirthday) actions.append(link('Make invitation', '#invitation', 'kbd-action'));
+    actions.append(link('FAQs', '#kbd-visit-faqs', 'kbd-action'));
+    return actions;
+  }
+
+  function showPackage(booking) {
+    const section = node('section', 'kbd-card');
+    const header = node('header', 'kbd-package-head');
+    const title = node('div', 'kbd-package-title');
+    title.append(node('p', 'kbd-muted', 'Your package'), node('h2', '', booking.package.name));
+    const guests = count.format(booking.guests) + (booking.guests === 1 ? ' guest' : ' guests');
+    header.append(title, node('span', 'kbd-badge', guests));
+    section.append(header);
+    const features = node('ul', 'kbd-features');
+    for (const [key, label, unit, note] of packageFeatures) {
+      if (!(booking.package[key] > 0)) continue;
+      const feature = node('li', 'kbd-feature');
+      feature.append(node('strong', '', count.format(booking.package[key]) + unit), node('span', '', label));
+      if (note) feature.append(node('small', '', note));
+      features.append(feature);
+    }
+    if (features.childElementCount) section.append(features);
+    if (booking.addons.length) {
+      const addons = booking.addons.map(addon => [
+        count.format(addon.qty) + ' × ' + addon.name + (addon.option_label ? ' · ' + addon.option_label : ''),
+        money(addon.line_total_cents)
+      ]);
+      section.append(disclosure('Add-ons · ' + money(booking.payment.addons_cents), rows('kbd-ledger', addons)));
+    }
     return section;
   }
 
-  function showTravel(venue, isBirthday) {
-    const section = node('section', 'kbd-card kbd-subsection');
-    const arrival = isBirthday
-      ? 'You can arrive up to 10 minutes early to check in. Have your booking number ready.'
-      : 'Meet your group before your session starts and check in together with your booking number.';
-    section.append(node('h3', '', 'Getting here'), node('p', '', arrival));
+  function showTravel(booking, start, end, venue, name, isBirthday) {
+    const section = node('section', 'kbd-card');
+    const arrival = isBirthday ? 'Check in up to 10 minutes early.' : 'Check in together at the venue counter.';
+    section.append(node('h2', '', 'Getting here'), node('p', 'kbd-visit-note', arrival));
+    const details = [rows('kbd-fields', [
+      [isBirthday ? 'Party room time (Sydney)' : 'Session time (Sydney)', displayTime(start, end)],
+      ['Venue', name], ['Address', booking.location.address], ['Party room', isBirthday ? booking.room : null]
+    ])];
     if (venue) {
-      const directions = node('div', 'kbd-subsection');
-      directions.append(node('p', '', venue.arrival), node('p', 'kbd-muted', 'Public transport: ' + venue.transport),
-        node('p', 'kbd-muted', 'Parking: ' + venue.parking));
-      section.append(directions);
+      details.push(node('p', 'kbd-muted', venue.arrival), rows('kbd-fields', [
+        ['Public transport', venue.transport], ['Parking', venue.parking]
+      ]), link('Venue guide', '/locations/' + venue.slug, 'kbd-muted'));
+    }
+    section.append(disclosure('Address, times & parking', ...details));
+    const contact = venueContact(booking.location, venue);
+    if (contact) {
       const actions = node('div', 'kbd-actions');
-      actions.append(link('Venue and travel information', '/locations/' + venue.slug, 'kbd-action'));
+      actions.append(contact);
       section.append(actions);
     }
     return section;
@@ -492,17 +673,43 @@
 
   function showFAQs(booking, isBirthday) {
     const section = node('section', 'kbd-questions');
+    section.id = 'kbd-visit-faqs';
     const header = node('header', 'kbd-questions-heading');
-    const heading = node('h3', '', 'Frequently asked ');
+    const heading = node('h2', '', 'Frequently asked ');
     heading.append(node('span', 'kbd-qa-highlight', 'questions'));
     const mascot = node('span', 'kbd-qa-mascot');
     mascot.append(george('tablet', 171, 240));
     header.append(heading, mascot);
     section.append(header);
-    const questions = [['When is my payment due?', paymentMethods[booking.payment.method][1]], ...bookingQuestions];
-    section.append(faqGroup('Payments and booking changes', questions),
-      faqGroup(isBirthday ? 'Birthday parties' : 'Group visits', isBirthday ? birthdayQuestions : groupQuestions),
-      faqGroup('Games and cards', gameQuestions));
+    const questions = [
+      ['Booking & payment', [['When is my payment due?', paymentMethods[booking.payment.method][1]], ...bookingQuestions]],
+      [isBirthday ? 'Birthday parties' : 'Group visits', isBirthday ? birthdayQuestions : groupQuestions],
+      ['Games & cards', gameQuestions]
+    ];
+    const topics = node('div', 'kbd-topics');
+    topics.setAttribute('role', 'group');
+    topics.setAttribute('aria-label', 'FAQ topics');
+    const groups = questions.map(([, items], index) => {
+      const group = faqGroup(items);
+      group.id = 'kbd-questions-' + index;
+      group.setAttribute('aria-labelledby', 'kbd-topic-' + index);
+      group.hidden = index !== 0;
+      return group;
+    });
+    const buttons = questions.map(([label], index) => {
+      const button = node('button', 'kbd-topic', label);
+      button.type = 'button';
+      button.id = 'kbd-topic-' + index;
+      button.setAttribute('aria-controls', groups[index].id);
+      button.setAttribute('aria-pressed', String(index === 0));
+      button.addEventListener('click', () => buttons.forEach((topic, current) => {
+        topic.setAttribute('aria-pressed', String(current === index));
+        groups[current].hidden = current !== index;
+      }));
+      return button;
+    });
+    topics.append(...buttons);
+    section.append(topics, ...groups);
     const actions = node('div', 'kbd-actions');
     actions.append(emailLink(booking.reference), link('Booking terms', '/terms', 'kbd-action'));
     section.append(actions);
@@ -538,6 +745,7 @@
       }
       return;
     }
+    hide(hero);
     hide(document.getElementById('planning-venues'));
     if (isBirthday) return;
 
@@ -548,13 +756,6 @@
       const title = section.querySelector('h2')?.textContent.trim().toLowerCase();
       if (title === 'know your party timings' || title === 'need a hand with your party?') hide(section);
     }
-    const title = hero.querySelector('h1');
-    const tag = hero.querySelector('.cg-tag');
-    const lead = hero.querySelector('.vg-lede');
-    if (title) title.textContent = 'Your KOKO group visit';
-    if (tag) tag.textContent = 'GROUP BOOKING';
-    if (lead) lead.textContent = 'Check your session, payment and arrival details below.';
-    hide(hero.querySelector('.kp-actions'));
   }
 
   function renderBooking(panel, planning, hero, booking, start, end) {
@@ -562,8 +763,8 @@
     const cancelled = booking.status === 'cancelled';
     const venue = venues[booking.location.id];
     const name = venueName(booking.location, venue);
-    heading(panel, booking);
     if (cancelled) {
+      heading(panel, booking);
       const section = node('section', 'kbd-card');
       section.append(node('h3', '', 'This booking has been cancelled'), rows('kbd-fields', [
         ['Original time (Sydney)', displayTime(start, end)], ['Venue', name]
@@ -575,14 +776,12 @@
       section.append(actions);
       panel.append(section);
     } else {
-      if (booking.greeting_name) {
-        const greeting = node('div', 'kbd-greeting');
-        greeting.append(george('wave', 387, 400), node('p', '', 'Hi ' + booking.greeting_name + '!'));
-        panel.append(greeting);
-      }
       const grid = node('div', 'kbd-grid');
-      grid.append(showVisit(booking, start, end, venue, name, isBirthday), showPayment(booking.payment));
-      panel.append(grid, showTravel(venue, isBirthday), showFAQs(booking, isBirthday));
+      const side = node('div', 'kbd-side');
+      side.append(showPayment(booking.payment), showTravel(booking, start, end, venue, name, isBirthday));
+      grid.append(showPackage(booking), side);
+      panel.replaceChildren(showTicket(booking, start, venue, isBirthday),
+        showShortcuts(booking, start, end, name, isBirthday), grid, showFAQs(booking, isBirthday));
       if (isBirthday) prefillInvitation(booking, name, start);
     }
     updatePlanning(planning, hero, panel, isBirthday, cancelled);
