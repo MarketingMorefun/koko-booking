@@ -88,10 +88,10 @@
   ];
 
   const bookingQuestions = [
-    ['Can I change the date, package or number of guests?',
-      'Email us with your booking number and what you’d like to change at least 24 hours before your visit. Changes depend on availability.'],
-    ['What if more or fewer guests turn up?',
-      'Call the venue as soon as you know. Extra guests depend on capacity and may cost extra. The minimum charge may still apply if fewer guests come.'],
+    ['Do I need to email KOKO if my guest numbers change?',
+      'No email needed. We’ll count how many guests are playing when you check in. If fewer than 10 play, your booking can still go ahead and you’ll be charged for 10. For 10 or more, you’ll pay for the number who play. Your venue’s capacity still applies.'],
+    ['Can I change my booking date or package?',
+      'To change your date or package, email marketing@kokoamusement.com.au with your booking ID at least 24 hours before your visit. Changes are subject to availability.'],
     ['What if we’re running late or can’t make it?',
       'Call the venue with your expected arrival time or let the team know you can’t make it. Your booking may still finish at its scheduled time.'],
     ['Can I cancel or get my deposit back?',
