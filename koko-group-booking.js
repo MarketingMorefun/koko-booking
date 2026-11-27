@@ -1314,6 +1314,18 @@ function ensureMarketingConsent(btnId,inputId){
 // in the link prefills it. CheckPromo only previews the discount; CreateGroupBooking
 // works it out again and refuses a bad code, so nothing is charged on trust.
 let _promoChecked=null;
+// Black Friday: every visitor gets the code filled in, whatever link they came from.
+// A code we filled in (campaign default or ?promo= link) that does not fit the
+// booking is quietly removed instead of blocking it; a typed code still shows errors.
+const PROMO_DEFAULT={code:"BLACKFRIDAY",until:1796043600000};// 1 Dec 2026 00:00 Sydney
+let _promoAuto=false;
+function dropAutoPromo(){
+  const i=promoInput(),code=promoValue();
+  if(i)i.value="";
+  _promoAuto=false;_promoChecked=null;
+  promoStatus(code+" doesn't apply to this booking, so we've removed it. You can continue as normal.");
+  return true;
+}
 function promoInput(){return document.getElementById("groupPromoCode")}
 function promoValue(){const i=promoInput();return i?i.value.trim().toUpperCase():""}
 function promoStatus(text,kind){
@@ -1361,13 +1373,16 @@ function ensurePromoField(btnId){
   wrap.appendChild(row);
   wrap.appendChild(status);
   btn.parentNode.insertBefore(wrap,document.querySelector(".koko-marketing-consent")&&document.querySelector(".koko-marketing-consent").parentNode===btn.parentNode?document.querySelector(".koko-marketing-consent"):btn);
-  input.addEventListener("input",function(){_promoChecked=null;promoStatus("");});
+  input.addEventListener("input",function(){_promoChecked=null;_promoAuto=false;promoStatus("");});
   input.addEventListener("keydown",function(e){if(e.key==="Enter"){e.preventDefault();e.stopPropagation();applyPromo();}});
   apply.addEventListener("click",function(e){e.preventDefault();e.stopPropagation();applyPromo();});
   const fromLink=(new URLSearchParams(location.search).get("promo")||"").trim().toUpperCase();
   if(/^[A-Z0-9_-]{2,30}$/.test(fromLink)){
-    input.value=fromLink;
+    input.value=fromLink;_promoAuto=true;
     promoStatus("Your discount will show on the review step. Can't be combined with other offers.");
+  }else if(Date.now()<PROMO_DEFAULT.until){
+    input.value=PROMO_DEFAULT.code;_promoAuto=true;
+    promoStatus("We've added code "+PROMO_DEFAULT.code+". If your booking qualifies, the discount will show on the review step.");
   }
 }
 // true = no code, or the code is good for the current choices.
@@ -1382,7 +1397,7 @@ async function applyPromo(){
     const data=await r.json();
     if(code!==promoValue())return false;
     if(!r.ok||!data){promoStatus("We couldn't check this code. Please try again.","error");return false;}
-    if(data.ok!==true){promoStatus((data.message||"This promo code is not valid.")+" Remove the code to continue without it.","error");return false;}
+    if(data.ok!==true){if(_promoAuto)return dropAutoPromo();promoStatus((data.message||"This promo code is not valid.")+" Remove the code to continue without it.","error");return false;}
     _promoChecked=promoKey();
     promoStatus("Code applied: "+money(data.discount_cents)+" off your package.","ok");
     return true;
