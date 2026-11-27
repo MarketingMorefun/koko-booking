@@ -30,7 +30,7 @@
   const count = new Intl.NumberFormat('en-AU');
   const money = cents => amount.format(cents / 100);
 
-  // Venue and travel copy is maintained here. The booking supplies the address and phone.
+  // The booking supplies contact details. Venue notes also cover legacy address data.
   const venues = {
     1: {
       slug: 'townhall-614',
@@ -46,8 +46,9 @@
     },
     4: {
       slug: 'hurstville',
-      arrival: 'Find KOKO at Westfield Hurstville.',
-      transport: 'Walk from Hurstville Station or use a bus stop near Westfield.'
+      address: 'Shop G03/288 Forest Rd, Hurstville NSW 2220',
+      arrival: 'Find us on Forest Road.',
+      transport: 'Hurstville Station is a short walk from the arcade.'
     },
     5: {
       slug: 'hornsby-westfield-event-cinemas',
@@ -847,6 +848,10 @@
     const isBirthday = booking.type === 'birthday_party';
     const cancelled = booking.status === 'cancelled';
     const venue = venues[booking.location.id];
+    // Use the confirmed shop number for old Forest Road records across the card, maps and calendars.
+    if (venue?.address && (!booking.location.address || /\bG0[35]\b.*\b288\s+Forest\b/i.test(booking.location.address))) {
+      booking.location.address = venue.address;
+    }
     const name = venueName(booking.location, venue);
     if (cancelled) {
       heading(panel, booking);
