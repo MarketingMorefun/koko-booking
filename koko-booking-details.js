@@ -131,6 +131,14 @@
   ];
 
   const styles = `
+    body {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      min-height: 100dvh;
+    }
+    #party-planning.kp-guide { display: flow-root; flex: 1 0 auto; }
+    body > .main-section.navbar { background-color: #fffdf9; }
     #koko-booking-details {
       --kbd-ink: #2e241b;
       --kbd-muted: #66594b;
