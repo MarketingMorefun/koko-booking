@@ -46,7 +46,7 @@
     },
     4: {
       slug: 'hurstville',
-      arrival: 'Find KOKO at Shop G03 in Westfield Hurstville.',
+      arrival: 'Find KOKO at Westfield Hurstville.',
       transport: 'Walk from Hurstville Station or use a bus stop near Westfield.'
     },
     5: {
@@ -396,6 +396,12 @@
       #koko-booking-details .kbd-ticket-copy h1 { font-size: clamp(1.65rem, 7.7vw, 2.4rem); }
       #koko-booking-details .kbd-ticket-art { width: clamp(5.75rem, 22vw, 8rem); }
       #koko-booking-details .kbd-ticket-art img { width: 88%; }
+      #koko-booking-details .kbd-ticket-facts { grid-template-columns: minmax(0, 1fr); }
+      #koko-booking-details .kbd-ticket-time {
+        display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: .5rem;
+      }
+      #koko-booking-details .kbd-ticket-time dt { grid-column: 1 / -1; }
+      #koko-booking-details .kbd-ticket-time .kbd-ticket-fact-note { margin: 0; text-align: right; }
       #koko-booking-details .kbd-calendar { display: grid; width: 100%; padding: .55rem; }
       #koko-booking-details .kbd-calendar-links {
         display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch;
@@ -506,7 +512,7 @@
     return fact;
   }
 
-  function showTicket(booking, start, venue, isBirthday) {
+  function showTicket(booking, start, name, isBirthday) {
     const ticket = node('header', 'kbd-ticket' + (isBirthday ? '' : ' kbd-ticket-group'));
     const header = node('div', 'kbd-ticket-header');
     const copy = node('div', 'kbd-ticket-copy');
@@ -524,8 +530,6 @@
     header.append(badges, copy, art);
 
     const localDate = ticketDate.format(start).replace(',', '');
-    const venueNote = venue?.floor && !booking.location.name.toLowerCase().includes(venue.floor.toLowerCase())
-      ? venue.floor : booking.room || booking.location.address;
     const payment = booking.payment;
     const paymentFact = payment.method === 'full'
       ? ticketFact('kbd-ticket-money', 'Payment', 'Paid in full', 'Nothing due at the venue')
@@ -534,7 +538,7 @@
           : payment.balance_cents > 0 ? 'Pay at the venue on the day' : 'Nothing due at the venue');
     const facts = node('dl', 'kbd-ticket-facts');
     facts.append(ticketFact('kbd-ticket-time', isBirthday ? 'Party starts' : 'Session starts', time.format(start), localDate + ' · Sydney time'),
-      ticketFact('kbd-ticket-place', 'Venue', booking.location.name, venueNote), paymentFact);
+      ticketFact('kbd-ticket-place', 'Venue', name, booking.location.address || booking.room), paymentFact);
     ticket.append(header, facts);
     return ticket;
   }
@@ -861,7 +865,7 @@
       const side = node('div', 'kbd-side');
       side.append(showPayment(booking.payment), showTravel(booking, start, end, venue, name, isBirthday));
       grid.append(showPackage(booking), side);
-      panel.replaceChildren(showTicket(booking, start, venue, isBirthday),
+      panel.replaceChildren(showTicket(booking, start, name, isBirthday),
         showShortcuts(booking, start, end, name, isBirthday), grid, showFAQs(booking, isBirthday));
       if (isBirthday) prefillInvitation(booking, name, start);
     }
